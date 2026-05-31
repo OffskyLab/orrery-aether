@@ -2,7 +2,7 @@
   "id": "2026-05-31-aether-cli",
   "file": "aether/docs/tasks/2026-05-31-aether-cli.md",
   "title": "Aether 統一 CLI（aether mcp setup / client setup / 「/」叫用 MCP）",
-  "status": "ready",
+  "status": "done",
   "created": "2026-05-31",
   "depends_on": [],
   "supersedes": [],
@@ -20,12 +20,22 @@
     "grep -q 'def merge_mcp_config' aether/cli_support.py",
     "grep -q '@mcp.prompt()' aether/mcp_server.py"
   ],
-  "tags": ["feature", "cli", "mcp", "dx"],
+  "tags": [
+    "feature",
+    "cli",
+    "mcp",
+    "dx"
+  ],
   "status_history": [
     {
       "status": "ready",
       "at": "2026-05-31T00:00:00Z",
       "note": "write-spec from consensus discussion (2 rounds, Codex+Gemini). audit-spec: 4b Rule-1 line-anchor FAIL fixed; 5b internal PASS; 5c external (codex) 6 findings all resolved (goal/non-goals shim, registry-sync identity re-add, YAML safe_dump escaping, claude-cli env passthrough, merge shape-validate, abs-cwd machine check). No remaining high risk."
+    },
+    {
+      "status": "done",
+      "at": "2026-06-01T00:00:00Z",
+      "note": "implemented in 7 phased commits; 85 tests green; / prompts verified over stdio"
     }
   ]
 }

@@ -30,3 +30,8 @@ Spec: `aether/docs/tasks/2026-05-31-aether-cli.md`（status ready）。
   writes（ask/discuss/stop）回最小指令字串、**render 不寫入**（防 double-send，C5/Codex）；transcript bounded；stop confirm-first。
 - `AetherBridge.start_heartbeat` 每 tick 重 `registry.add`（修 Codex HIGH：sync 後自我修復）。
 - 實機驗證：6 prompts 經真實 stdio 呈現為 `/mcp__aether__<name>`。全套 85 測試綠。
+
+### Step 7 — 文件 + 驗收
+- 兩份 README 補 `aether` CLI 用法 + 「/」slash 指令表（依 keep-readme-updated 規則）。
+- Spec「Agent 必做」全綠：85 測試、abs-cwd 入口、關鍵 symbol、ask 指令-only 安全性。
+- 實機：6 prompts 經真實 stdio 呈現為 `/mcp__aether__<name>`。

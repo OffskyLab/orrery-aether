@@ -49,6 +49,8 @@ aether/
 ├── operator_panel/         # Phase 4 · 操作面板（獨立、需驗證的寫入路徑；絕不在 Stargazer）
 │   ├── control_service.py  # §18.2 注入/暫停/恢復/終止 + 稽核（operator_action）
 │   └── server.py           # §18.3 FastAPI，localhost+token，未驗證寫入→401
+├── cli.py                  # 統一 `aether` CLI（mcp setup / client setup / server status / who / install-shim / alias）
+├── cli_support.py          # 純函式：merge_mcp_config / append_constellation_body / infer_metadata（可單元測試）
 ├── run_observatory.py      # 啟動單一真實專案的常駐 Observatory（接你的本地專案用）
 ├── send_message.py         # CLI：發起一場跨專案對話（Comet 或 Wave，含稽核，發了就走）
 ├── consult.py              # CLI：問一個專案並「同步等待」取回答案（互動用，一次性身分）
