@@ -1,4 +1,4 @@
-# Aether — Phase 1 + Phase 2 + Phase 3 + Phase 4
+# Aether — Phase 1 + Phase 2 + Phase 3 + Phase 4 + 統一 CLI
 
 訊息基礎建設，讓分屬不同專案的 Claude 代理直接互相溝通。
 
@@ -54,21 +54,24 @@ aether/
 ├── run_observatory.py      # 啟動單一真實專案的常駐 Observatory（接你的本地專案用）
 ├── send_message.py         # CLI：發起一場跨專案對話（Comet 或 Wave，含稽核，發了就走）
 ├── consult.py              # CLI：問一個專案並「同步等待」取回答案（互動用，一次性身分）
-├── mcp_server.py           # MCP server（FastMCP/stdio）：6 個 aether_* 工具給 Claude Code 自動發現
+├── mcp_server.py           # MCP server（FastMCP/stdio）：6 個 aether_* 工具 + 6 個 /mcp__aether__* prompts
 ├── mcp.example.json        # .mcp.json 註冊範本
-├── tests/                  # P1 6 + P2 8 + P3 7 + P4 8 情境（e2e 以 --run-e2e 閘控）
+├── tests/                  # P1 + P2 + P3 + P4 情境 + CLI（85 快測，e2e 以 --run-e2e 閘控）
+├── docs/                   # CLI 的 plan / discussion / spec / DEVLOG（變更紀錄）
 ├── demo_scenario1.py       # Phase 1 真實 claude e2e demo
 ├── demo_phase2.py          # Phase 2 真實 claude e2e demo（多跳 + 路由選擇 + resume）
-└── demo_phase4.py          # Phase 4 demo（Wave + operator 暫停→恢復→終止，時間軸可見）
+├── demo_phase4.py          # Phase 4 demo（Wave + operator 暫停→恢復→終止，時間軸可見）
+└── demo_register.py        # §17 反客套 demo（真實 Observatory 擋下 ack 回覆）
 ```
 
 ## 接你自己的本地專案
 
-在 `constellation.yaml` 為每個專案加一個 `body`（`working_dir` 指向真實資料夾），
-每個專案各開一個終端機跑 `python3 aether/run_observatory.py <project_id>` 並保持運行
-（專案要在線才收得到訊息＝有 heartbeat），再用 `python3 aether/send_message.py --to <id>
---text "..."` 發起對話。被觸發的 `claude -p` 預設**唯讀工具**（Read/Glob/Grep），要放寬
-才加 `--allow-write`。詳見根目錄 README 的「Connect your own local projects」。
+用統一 CLI（推薦）：在專案目錄 `aether client setup`（登錄 Body + 連 Redis）→
+`aether observatory <id>`（上線收訊）→ `aether mcp setup`（讓該專案 Claude Code 有「/」工具）。
+原始腳本等價形式：`python3 aether/run_observatory.py <id>`、`python3 aether/send_message.py
+--to <id> --text "..."`、`python3 aether/consult.py --to <id> --text "..."`（同步等回覆）。
+被觸發的 `claude -p` 預設**唯讀工具**（Read/Glob/Grep），要放寬才加 `--allow-write`。
+詳見根目錄 README 的「Connect your own local projects」與「The `aether` CLI」。
 
 `core/control.py` 的控制狀態（pause/kill）放 Redis key，Observatory 只**讀**、操作面板才
 **寫**——依賴方向乾淨（observatory→core；operator_panel→core），Stargazer 完全不碰。
@@ -86,8 +89,13 @@ docker compose -f aether/docker-compose.yml up -d redis
 # 2. 安裝相依
 python3 -m pip install -r aether/requirements.txt
 
-# 3. 快速確定性測試（P1+P2，可進 CI，全綠；e2e 自動跳過）
-cd aether && python3 -m pytest -v
+# 3. 快速確定性測試（全部 Phase + CLI，可進 CI，85 passed；e2e 自動跳過）
+cd aether && python3 -m pytest -q
+
+# 3b. 統一 CLI（免 pip）：裝 shim 後 bare 指令可用
+python3 -m aether.cli install-shim
+aether mcp setup        # 在某專案目錄：設好 MCP（→ Claude Code「/」工具）
+aether client setup     # 登錄為 Body 並連 Redis
 
 # 4. 真實 claude e2e 測試（閘控，跑一次）
 python3 -m pytest -v --run-e2e -m e2e
@@ -184,6 +192,23 @@ python3 aether/demo_phase4.py
 > **回歸閘門（不可協商）**：`tests/test_p3_scenario_6_readonly.py` 在 Phase 4 後**原封不動**
 > 仍全綠（檔案 sha 未變、Stargazer 路由仍 GET/HEAD only、寫入命令全被封）。操作面板是
 > **另一個** app，寫入需 token，未驗證被拒。
+
+## 統一 CLI（`aether` …）↔ 測試
+
+流程：`/plan → /discuss（2 輪，Codex+Gemini 共識）→ /write-spec → /audit-spec（全綠）→ 實作`。
+spec：`docs/tasks/2026-05-31-aether-cli.md`；討論：`docs/discussions/2026-05-31-aether-cli.md`；
+變更紀錄：`git init` + 每階段一 commit + `docs/DEVLOG.md`。
+
+| 主題 | 測試檔 |
+|---|---|
+| 純函式（merge_mcp_config 冪等＋形狀驗證、append_constellation_body 保留 header＋YAML 跳脫、infer_metadata 不發明） | `tests/test_cli_support.py`（10） |
+| dispatcher 路由、`mcp setup` 寫穩定 `<project>-mcp`＋絕對 python＋冪等 merge、`client setup` append、install-shim | `tests/test_cli.py`（6） |
+| 「/」prompts：reads render 時 prefetch；writes（ask/discuss/stop）**render 不送訊息/不 terminate**（防 double-send） | `tests/test_mcp_prompts.py`（4） |
+
+設計定案（討論 C1–C10）：延後 pip packaging（用 `-m`/絕對路徑/`install-shim`）；MCP 預設 project scope；
+`.mcp.json` 冪等 merge 為主、`claude mcp add` 為輔；identity `<project>-mcp` 與 Body `<project>` 刻意不同；
+prompts reads-prefetch / writes-instruction-only；constellation append-only（PyYAML，不加 ruamel）；
+`server` 只做 `status`；兩個 setup 獨立（不加 `aether init`）。
 
 ## §15.6 拍板決定（你已確認）
 

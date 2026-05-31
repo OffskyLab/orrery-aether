@@ -92,7 +92,7 @@ python3 -m pip install -r aether/requirements.txt
 
 # 3. Run the fast, deterministic test suite (CI-able; real-claude e2e is gated)
 #    跑快速確定性測試（可進 CI；真實 claude e2e 另以閘控）
-cd aether && python3 -m pytest -q          # 65 passed
+cd aether && python3 -m pytest -q          # 85 passed
 cd ..
 
 # 4. Real claude -p end-to-end demos / 真實 claude 端對端 demo
@@ -121,6 +121,12 @@ talk directly. The triggered `claude -p` runs with **read-only tools**
 (Read/Glob/Grep) by default — safe for a first run with no human in the loop.
 讓你自己的兩個（以上）真實專案互通，代理直接對話。被觸發的 `claude -p` 預設只給
 **唯讀工具**（Read/Glob/Grep），第一次跑很安全。
+
+> The raw `python3 aether/<script>.py` commands below are the explicit form; the
+> **[`aether` CLI](#the-aether-cli--統一-cli)** wraps them (`aether client setup`,
+> `aether observatory <id>`, `aether send/consult …`) and is the recommended path.
+> 下面用原始腳本最直白；**`aether` CLI** 把它們包起來（`aether client setup` /
+> `aether observatory <id>` …），是推薦做法。
 
 **1. Register your projects** in [`aether/constellation.yaml`](aether/constellation.yaml) —
 one `body` per project, with `working_dir` pointing at the real folder:
@@ -223,13 +229,14 @@ aether send / consult ...                   # = send_message.py / consult.py
 ### Most seamless: the Aether MCP server / 最無縫：Aether MCP server
 
 `aether/mcp_server.py` is an MCP server (FastMCP, stdio). Register it in a project's
-`.mcp.json` and Claude Code auto-discovers six `aether_*` tools — **no CLAUDE.md edits,
-no manual CLI**. It represents your session as a transient bus identity and runs no
-headless claude (your interactive session is the brain on this side); only the peer
-you consult needs its Observatory running.
-把 `aether/mcp_server.py` 註冊進專案的 `.mcp.json`，Claude Code 就自動有六個 `aether_*` 工具——
-**不用改 CLAUDE.md、不用手敲指令**。它把你的 session 當成一次性的 bus 身分，這邊不跑 headless
-claude（你的互動 session 就是大腦）；只有被諮詢的對方需要開 Observatory。
+`.mcp.json` (easiest: `aether mcp setup`) and Claude Code gets **six `aether_*` tools**
+(model-invoked) **+ six `/mcp__aether__*` slash commands** (user-invoked) — **no CLAUDE.md
+edits**. It represents your session as a transient bus identity and runs no headless
+claude (your interactive session is the brain on this side); only the peer you consult
+needs its Observatory running.
+把 `aether/mcp_server.py` 註冊進專案的 `.mcp.json`（最簡單：`aether mcp setup`），Claude Code 就有
+**六個 `aether_*` 工具**（模型自呼）**＋六個 `/mcp__aether__*` 斜線指令**（使用者叫用）——**不用改
+CLAUDE.md**。它把你的 session 當成一次性 bus 身分，這邊不跑 headless claude；只有被諮詢的對方需要開 Observatory。
 
 | Tool | Purpose / 用途 |
 |---|---|
@@ -316,13 +323,15 @@ orrery-aether/
     ├── run_observatory.py    launch a resident Observatory for one project / 啟動單一專案的 Observatory
     ├── send_message.py       kick off a conversation from the CLI (fire-and-forget) / 從 CLI 發起對話
     ├── consult.py            ask one project & wait for the reply inline (interactive) / 問一個專案並同步取回答案
-    ├── mcp_server.py         MCP server: 6 aether_* tools for Claude Code (no CLAUDE.md edits) / 給 Claude Code 的 MCP 工具
+    ├── mcp_server.py         MCP server: 6 aether_* tools + 6 /mcp__aether__* prompts / MCP 工具＋「/」指令
     ├── mcp.example.json      copy-paste .mcp.json registration / .mcp.json 註冊範本
+    ├── demo_*.py             real claude -p end-to-end demos (scenario1 / phase2 / phase4 / register)
     ├── core/            envelope, guardrails, client, processing-log, registry, heartbeat, control
     ├── observatory/     the resident listener: runner, parsing, prompt, register, pipeline
     ├── stargazer/       read-only dashboard (FastAPI + SSE + single-file SPA)
     ├── operator_panel/  authenticated control plane (the only write path)
-    ├── tests/           65 fast tests + 2 gated real-claude e2e
+    ├── tests/           85 fast tests + 2 gated real-claude e2e
+    ├── docs/            plan / discussion / spec / DEVLOG for the CLI work
     └── README.md        ← detailed phase-by-phase implementation & acceptance notes / 逐階段細節
 ```
 
