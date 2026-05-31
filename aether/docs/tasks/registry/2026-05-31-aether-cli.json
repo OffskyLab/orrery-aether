@@ -1,0 +1,31 @@
+{
+  "id": "2026-05-31-aether-cli",
+  "file": "aether/docs/tasks/2026-05-31-aether-cli.md",
+  "title": "Aether 統一 CLI（aether mcp setup / client setup / 「/」叫用 MCP）",
+  "status": "ready",
+  "created": "2026-05-31",
+  "depends_on": [],
+  "supersedes": [],
+  "discussion": "aether/docs/discussions/2026-05-31-aether-cli.md",
+  "plan": "aether/docs/cli/00-plan.md",
+  "preconditions": [
+    "file:aether/cli.py:absent",
+    "file:aether/mcp_server.py",
+    "file:aether/core/registry.py",
+    "file:aether/constellation.yaml"
+  ],
+  "verification": [
+    "python3 -m pytest -p no:cacheprovider -q",
+    "python3 -m pytest -p no:cacheprovider -q tests/test_cli_support.py tests/test_cli.py tests/test_mcp_prompts.py",
+    "grep -q 'def merge_mcp_config' aether/cli_support.py",
+    "grep -q '@mcp.prompt()' aether/mcp_server.py"
+  ],
+  "tags": ["feature", "cli", "mcp", "dx"],
+  "status_history": [
+    {
+      "status": "ready",
+      "at": "2026-05-31T00:00:00Z",
+      "note": "write-spec from consensus discussion (2 rounds, Codex+Gemini). audit-spec: 4b Rule-1 line-anchor FAIL fixed; 5b internal PASS; 5c external (codex) 6 findings all resolved (goal/non-goals shim, registry-sync identity re-add, YAML safe_dump escaping, claude-cli env passthrough, merge shape-validate, abs-cwd machine check). No remaining high risk."
+    }
+  ]
+}

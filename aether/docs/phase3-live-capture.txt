@@ -1,0 +1,46 @@
+=== Stargazer live capture · one conversation, start → natural convergence ===
+conversation: bea48b3d · 20 events on aether:events
+
+──────────────────────────────────────────────────────────────────────────────
+▷ event: message operator→project_alpha hop0
+  sky:       ☆ operator·act1(dim)  ★ alpha·act1  ★ beta·act0  ★ gamma·act0
+  timeline:
+     hop 0: operator → project_alpha [task] You are project_alpha (frontend). You need the
+──────────────────────────────────────────────────────────────────────────────
+▷ event: done [project_alpha]
+  sky:       ☆ operator·act3(dim)  ★ alpha·act8  ★ beta·act0  ★ gamma·act0
+  timeline:
+     hop 0: operator → project_alpha [task] You are project_alpha (frontend). You need the
+  telescope: turn_start → tool_use(Glob) → tool_use(Glob) → tool_use(Read) → turn_done  [turn done]
+──────────────────────────────────────────────────────────────────────────────
+▷ event: message project_alpha→project_beta hop1
+  sky:       ☆ operator·act3(dim)  ★ alpha·act9  ★ beta·act1  ★ gamma·act0
+  timeline:
+     hop 0: operator → project_alpha [task] You are project_alpha (frontend). You need the
+     hop 1: project_alpha → project_beta [ask] Hi project_beta — this is project_alpha (front
+  telescope: turn_start → tool_use(Glob) → tool_use(Glob) → tool_use(Read) → turn_done  [turn done]
+──────────────────────────────────────────────────────────────────────────────
+▷ event: done [project_beta]
+  sky:       ☆ operator·act3(dim)  ★ alpha·act11  ★ beta·act7  ★ gamma·act0
+  timeline:
+     hop 0: operator → project_alpha [task] You are project_alpha (frontend). You need the
+     hop 1: project_alpha → project_beta [ask] Hi project_beta — this is project_alpha (front
+  telescope: turn_start → tool_use(Glob) → tool_use(Read) → turn_done  [turn done]
+──────────────────────────────────────────────────────────────────────────────
+▷ event: message project_beta→project_alpha hop2
+  sky:       ☆ operator·act3(dim)  ★ alpha·act12  ★ beta·act8  ★ gamma·act0
+  timeline:
+     hop 0: operator → project_alpha [task] You are project_alpha (frontend). You need the
+     hop 1: project_alpha → project_beta [ask] Hi project_beta — this is project_alpha (front
+     hop 2: project_beta → project_alpha [inform] Confirmed from the project_beta orders API doc
+  telescope: turn_start → tool_use(Glob) → tool_use(Read) → turn_done  [turn done]
+──────────────────────────────────────────────────────────────────────────────
+▷ event: done [project_alpha]
+  sky:       ☆ operator·act3(dim)  ★ alpha·act16  ★ beta·act10  ★ gamma·act0
+  timeline:
+     hop 0: operator → project_alpha [task] You are project_alpha (frontend). You need the
+     hop 1: project_alpha → project_beta [ask] Hi project_beta — this is project_alpha (front
+     hop 2: project_beta → project_alpha [inform] Confirmed from the project_beta orders API doc
+  telescope: turn_start → turn_done  [turn done]
+──────────────────────────────────────────────────────────────────────────────
+Conversation converged naturally (no extinction). The dashboard above is rebuilt entirely from aether:events — render == event stream.

@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# OS
+.DS_Store
+
+# Aether
+aether-redis-data/
+# local-scope MCP config (machine-specific absolute paths) — keep out of history
+.mcp.local.json

@@ -1,0 +1,21 @@
+# Aether Phase 1 — only Redis (the "介質").
+# Stargazer is Phase 3, so it is intentionally absent here.
+services:
+  redis:
+    image: redis:7
+    container_name: aether-redis
+    # AOF persistence per spec §2.4 ("開 AOF 持久化"): unACKed Streams entries
+    # must survive a restart for scenario 6 (reliable delivery).
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - aether-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  aether-redis-data:

@@ -1,0 +1,41 @@
+# constellation.yaml — the star chart (single source of truth), spec §4.1 / §13.4
+#
+# Two real local projects in the Cosmogony / Mendesky ecosystem, in a
+# producer → consumer relationship around the Event Storming export contract:
+#
+#   event_storming_tool  PRODUCES  the SpecBundle export JSON
+#   genesis              CONSUMES  it to scaffold Swift DDD/Event-Sourcing code
+#
+# Launch one Observatory per project, each in its own terminal, and keep both
+# running (a project must be online — heartbeating — to receive messages):
+#
+#     python3 aether/run_observatory.py event_storming_tool
+#     python3 aether/run_observatory.py genesis
+#
+# Then kick off a conversation, e.g.:
+#     python3 aether/send_message.py --to genesis --from event_storming_tool \
+#       --intent ask --text "Which SpecBundle fields do you actually depend on?"
+#
+# Safety: the triggered `claude -p` runs with READ-ONLY tools (Read/Glob/Grep) by
+# default — it can read each repo and answer, but cannot modify anything (§13.5).
+
+bodies:
+  event_storming_tool:
+    description: >-
+      Event Storming canvas UI + MCP server (React/TS, "Cosmogony"). Models DDD
+      domains collaboratively and EXPORTS a SpecBundle JSON
+      (Aggregate/UseCase/ReadModel/DTO/Presenter specs) for downstream code gen.
+      Owns the export schema (src/types/bundle.ts, docs/spec-design.md).
+    capabilities: ["event-storming", "ddd-modeling", "mcp-server", "spec-export", "react-canvas"]
+    inbox: "aether:inbox:event_storming_tool"
+    working_dir: "/Users/abnertsai/JiaBao/Mendesky/EventStormingTool"
+
+  genesis:
+    description: >-
+      Swift CLI that scaffolds DDD/Event-Sourcing projects by CONSUMING the
+      Cosmogony Event Storming export JSON; generates aggregates, use cases,
+      read models, presenters. Owns the consumed-schema expectations + cross-ref
+      validation (BundleParser).
+    capabilities: ["swift", "ddd-scaffold", "event-sourcing", "code-generation", "cosmogony-integration"]
+    inbox: "aether:inbox:genesis"
+    working_dir: "/Users/abnertsai/JiaBao/Mendesky/Genesis"
