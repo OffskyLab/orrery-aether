@@ -84,6 +84,13 @@ class AetherBridge:
             while not self._hb_stop.is_set():
                 try:
                     self.heartbeat.beat(self.identity)
+                    # Re-add our transient Body each tick: a Registry.sync() (from
+                    # `client setup` or an Observatory startup) deletes the whole
+                    # registry, which would otherwise drop us and get our replies
+                    # rejected as invalid_recipient. Idempotent self-heal (spec C-fix).
+                    self.registry.add(Body(self.identity,
+                                           f"interactive Claude Code session ({self.identity})",
+                                           ["interactive"], inbox_stream(self.identity)))
                 except Exception:
                     pass
                 self._hb_stop.wait(10)
@@ -228,6 +235,68 @@ def build_server(bridge: AetherBridge):
         """OPERATOR control over a conversation: action = pause | resume | terminate.
         Use terminate to stop a runaway/looping discussion (manual Horizon). Audited."""
         return bridge.control(thread, action)
+
+    # ── "/" slash commands (MCP prompts → /mcp__aether__<name>, spec C5) ──
+    # READS pre-fetch live data at render (most "direct"); WRITES return a minimal
+    # single-tool-call instruction and hand off to /poll — they NEVER send/terminate
+    # at render time (avoids double-send) and NEVER inject a polling loop.
+    _MAX = 600  # transcript text bound per hop
+
+    @mcp.prompt()
+    def who() -> str:
+        """List the Aether projects you can talk to and who is online."""
+        data = bridge.list_bodies()
+        lines = [f"You ({data['me']}) can talk to:"]
+        for b in data["bodies"]:
+            lines.append(f"  - {b['id']} [{'online' if b['online'] else 'OFFLINE'}] "
+                         f"{b['description']} (caps: {', '.join(b['capabilities'])})")
+        lines.append(data["note"])
+        return "\n".join(lines)
+
+    @mcp.prompt()
+    def ask(to: str, question: str, thread: str = "") -> str:
+        """Ask another project a question (you drive). Returns an instruction to run the ask tool."""
+        t = f", thread='{thread}'" if thread else ""
+        return (f"Use the `aether_ask` tool with to='{to}', question='{question}'{t}. "
+                f"Report the returned thread id and tell me to run `/mcp__aether__poll <thread>` "
+                f"in ~30-90s to fetch the reply. Do NOT poll in a loop yourself and do NOT resend.")
+
+    @mcp.prompt()
+    def poll(thread: str) -> str:
+        """Pick up replies + status on a thread (pre-fetched)."""
+        data = bridge.poll(thread)
+        if data.get("new_replies"):
+            out = [f"thread {thread} — status {data['status']}:"]
+            for rp in data["new_replies"]:
+                out.append(f"  {rp['from']} (hop {rp['hop']}): {rp['text']}")
+            return "\n".join(out)
+        return f"thread {thread} — status {data['status']} (no new reply yet; poll again shortly)."
+
+    @mcp.prompt()
+    def discuss(from_project: str, to_project: str, topic: str) -> str:
+        """Start an autonomous discussion between two projects (both must be online)."""
+        return (f"Use the `aether_discuss` tool with from_project='{from_project}', "
+                f"to_project='{to_project}', topic='{topic}'. Report the returned thread and tell me "
+                f"to run `/mcp__aether__transcript <thread>` to watch it. Both projects' Observatories "
+                f"must be running. Do NOT loop.")
+
+    @mcp.prompt()
+    def transcript(thread: str) -> str:
+        """Show a conversation's full timeline (pre-fetched, bounded)."""
+        data = bridge.transcript(thread)
+        out = [f"transcript of {thread}:"]
+        for h in data.get("hops", []):
+            out.append(f"  hop {h['hop']}: {h['from']} → {h['to']} [{h['intent']}] {h['text'][:_MAX]}")
+        if data.get("ended"):
+            out.append(f"  ended: {data['ended'].get('reason')}")
+        return "\n".join(out) if len(out) > 1 else f"no activity on thread {thread} yet."
+
+    @mcp.prompt()
+    def stop(thread: str) -> str:
+        """Confirm before terminating a conversation (operator action)."""
+        return (f"To terminate thread '{thread}' (manual Horizon, audited), run the "
+                f"`aether_control` tool with thread='{thread}', action='terminate'. "
+                f"Confirm with me first if this conversation might still be wanted.")
 
     return mcp
 
