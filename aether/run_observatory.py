@@ -49,7 +49,7 @@ def _telescope_log(project_id, conversation_id, evt):
         print(f"   · [{project_id}] claude turn done ({evt.get('subtype')})")
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Run an Aether Observatory for one project.")
     ap.add_argument("project_id", help="must match a body in constellation.yaml")
     ap.add_argument("--constellation", default=DEFAULT_CONSTELLATION)
@@ -63,7 +63,7 @@ def main():
                     help="DANGER: give the triggered claude write/exec tools (default: read-only)")
     ap.add_argument("--verbatim-telescope", action="store_true",
                     help="forward full claude text to the dashboard (default: milestones only)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     bodies = load_constellation(args.constellation)
     if args.project_id not in bodies:

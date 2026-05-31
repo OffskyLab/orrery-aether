@@ -41,7 +41,7 @@ from aether.core.heartbeat import Heartbeat
 from aether.core.registry import Body, Registry
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Ask another Aether project and wait for the reply.")
     ap.add_argument("--to", required=True, help="recipient project_id (must have an Observatory running)")
     ap.add_argument("--text", required=True, help="the question (self-contained)")
@@ -53,7 +53,7 @@ def main():
     ap.add_argument("--redis-host", default=os.environ.get("AETHER_REDIS_HOST", "localhost"))
     ap.add_argument("--redis-port", type=int, default=int(os.environ.get("AETHER_REDIS_PORT", "6379")))
     ap.add_argument("--redis-db", type=int, default=int(os.environ.get("AETHER_REDIS_DB", "0")))
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.to == BROADCAST:
         sys.exit("consult is for a directed question; use send_message.py --wave for broadcasts")

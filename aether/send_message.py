@@ -29,7 +29,7 @@ from aether.core.envelope import BROADCAST
 from aether.operator_panel.control_service import OperatorService
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Send the first message of a conversation.")
     ap.add_argument("--to", help="recipient project_id (omit when using --wave)")
     ap.add_argument("--text", required=True, help="self-contained message body")
@@ -42,7 +42,7 @@ def main():
     ap.add_argument("--redis-host", default=os.environ.get("AETHER_REDIS_HOST", "localhost"))
     ap.add_argument("--redis-port", type=int, default=int(os.environ.get("AETHER_REDIS_PORT", "6379")))
     ap.add_argument("--redis-db", type=int, default=int(os.environ.get("AETHER_REDIS_DB", "0")))
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     to = BROADCAST if args.wave else args.to
     if not to:

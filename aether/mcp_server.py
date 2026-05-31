@@ -232,7 +232,7 @@ def build_server(bridge: AetherBridge):
     return mcp
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Aether MCP server (talk to other projects).")
     ap.add_argument("--identity", default=os.environ.get("AETHER_MCP_IDENTITY")
                     or f"mcp-{uuid.uuid4().hex[:6]}",
@@ -242,7 +242,7 @@ def main():
     ap.add_argument("--redis-host", default=os.environ.get("AETHER_REDIS_HOST", "localhost"))
     ap.add_argument("--redis-port", type=int, default=int(os.environ.get("AETHER_REDIS_PORT", "6379")))
     ap.add_argument("--redis-db", type=int, default=int(os.environ.get("AETHER_REDIS_DB", "0")))
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     redis = make_redis(host=args.redis_host, port=args.redis_port, db=args.redis_db)
     redis.ping()
