@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aether.core.aether_client import (AetherClient, EVENTS_STREAM, inbox_stream,
                                        make_redis)
+from aether.core.conn import add_redis_cli_opts, redis_cli_dict, resolve_redis_kwargs
 from aether.core.clock import SystemClock
 from aether.core.control import ControlPlane
 from aether.core.envelope import BROADCAST, Envelope, new_envelope
@@ -67,13 +68,16 @@ class AetherBridge:
         self._returned: dict = {}          # thread -> set of message_ids already handed out
         self._hb_stop = threading.Event()
 
-        # Bootstrap the star chart ONLY if empty (never clobber running Observatories'
-        # transient additions); then register ourselves as a transient identity.
+        # Bootstrap the star chart ONLY if the bus is empty (sync() is additive now,
+        # so it wouldn't clobber others; the empty-guard just avoids re-raising on an
+        # unrelated id conflict on every interactive start). Then register ourselves
+        # as a transient identity. Don't swallow the error silently — log it (N2).
         if constellation and not self.registry.all():
             try:
                 self.registry.load_and_sync(constellation)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"aether: could not seed constellation from {constellation}: {e}",
+                      file=sys.stderr)
         self.registry.add(Body(identity, f"interactive Claude Code session ({identity})",
                                ["interactive"], inbox_stream(identity)))
         self.heartbeat.beat(identity)
@@ -84,10 +88,9 @@ class AetherBridge:
             while not self._hb_stop.is_set():
                 try:
                     self.heartbeat.beat(self.identity)
-                    # Re-add our transient Body each tick: a Registry.sync() (from
-                    # `client setup` or an Observatory startup) deletes the whole
-                    # registry, which would otherwise drop us and get our replies
-                    # rejected as invalid_recipient. Idempotent self-heal (spec C-fix).
+                    # Re-add our transient Body each tick: a `--prune` sync or a
+                    # duplicate-id overwrite could otherwise drop us and get our replies
+                    # rejected as invalid_recipient. Idempotent self-heal (cheap insurance).
                     self.registry.add(Body(self.identity,
                                            f"interactive Claude Code session ({self.identity})",
                                            ["interactive"], inbox_stream(self.identity)))
@@ -308,12 +311,10 @@ def main(argv=None):
                     help="this session's bus identity (replies route here)")
     ap.add_argument("--constellation", default=os.environ.get("AETHER_CONSTELLATION",
                                                               DEFAULT_CONSTELLATION))
-    ap.add_argument("--redis-host", default=os.environ.get("AETHER_REDIS_HOST", "localhost"))
-    ap.add_argument("--redis-port", type=int, default=int(os.environ.get("AETHER_REDIS_PORT", "6379")))
-    ap.add_argument("--redis-db", type=int, default=int(os.environ.get("AETHER_REDIS_DB", "0")))
+    add_redis_cli_opts(ap)
     args = ap.parse_args(argv)
 
-    redis = make_redis(host=args.redis_host, port=args.redis_port, db=args.redis_db)
+    redis = make_redis(**resolve_redis_kwargs(cli=redis_cli_dict(args)))
     redis.ping()
     bridge = AetherBridge(redis, args.identity, constellation=args.constellation)
     bridge.start_heartbeat()

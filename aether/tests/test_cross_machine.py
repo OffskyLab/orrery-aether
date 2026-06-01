@@ -164,3 +164,66 @@ def test_register_body_cas_retries_on_watcherror():
     reg = Registry(FakeRedis())
     assert reg.register_body(_body("z")) == "added"
     assert calls["execute"] == 2             # retried once after WatchError
+
+
+# ---- F2: bus use persists a (non-secret) profile ---------------------------
+def test_bus_use_persists_profile(tmp_path, monkeypatch):
+    from aether import cli
+    import aether.core.aether_client as ac
+    from aether.core import conn
+
+    prof = tmp_path / ".aether" / "config.json"
+    monkeypatch.setattr(conn, "DEFAULT_PROFILE_PATH", str(prof))
+
+    class FakeRedis:
+        def __init__(self, **kw):
+            self.kw = kw
+
+        def ping(self):
+            return True
+
+    monkeypatch.setattr(ac, "make_redis", lambda **kw: FakeRedis(**kw))
+    monkeypatch.delenv("AETHER_REDIS_PASSWORD", raising=False)
+
+    rc = cli.main(["bus", "use", "--redis-host", "10.0.0.9", "--redis-port", "6380",
+                   "--redis-tls", "--redis-tls-ca", "/ca.pem"])
+    assert rc == 0
+    import json
+    data = json.loads(prof.read_text())
+    assert data["host"] == "10.0.0.9" and data["port"] == 6380 and data["ssl"] is True
+    assert data["ssl_ca_certs"] == "/ca.pem"
+    assert "password" not in data            # secret never persisted
+    assert oct(prof.stat().st_mode)[-3:] == "600"
+
+
+def test_bus_use_ping_fail_does_not_persist(tmp_path, monkeypatch):
+    from aether import cli
+    import aether.core.aether_client as ac
+    from aether.core import conn
+
+    prof = tmp_path / ".aether" / "config.json"
+    monkeypatch.setattr(conn, "DEFAULT_PROFILE_PATH", str(prof))
+
+    class Boom:
+        def ping(self):
+            raise RuntimeError("unreachable")
+
+    monkeypatch.setattr(ac, "make_redis", lambda **kw: Boom())
+    rc = cli.main(["bus", "use", "--redis-host", "10.0.0.9"])
+    assert rc == 1
+    assert not prof.exists()                 # no half-complete profile
+
+
+# ---- F3 / C5: Observatory refuses null working_dir -------------------------
+def test_observatory_null_working_dir_hard_errors(tmp_path):
+    import aether.run_observatory as ro
+    const = tmp_path / "c.yaml"
+    const.write_text(
+        "bodies:\n"
+        "  remote_body:\n"
+        "    description: r\n"
+        "    capabilities: []\n"
+        "    inbox: aether:inbox:remote_body\n"     # no working_dir → null
+    )
+    with pytest.raises(SystemExit):
+        ro.main(["remote_body", "--constellation", str(const)])

@@ -163,17 +163,19 @@ def run(host=None, port=None, db=None,
     hard-coded default — so calling ``run()`` with no args and no env is
     identical to before. Inside a container set ``AETHER_STARGAZER_HOST=0.0.0.0``
     and ``AETHER_REDIS_HOST=redis``, but publish the host port on 127.0.0.1 only
-    so the localhost-only EXPOSURE invariant still holds at the host boundary."""
-    import redis as redis_lib
+    so the localhost-only EXPOSURE invariant still holds at the host boundary.
+
+    The Redis connection (host/port/db/password/TLS) goes through the shared
+    resolver, so a passworded/TLS bus works via AETHER_REDIS_* env (the compose
+    web services pass env_file: .env); no direct ``redis.Redis`` build here."""
     import uvicorn
+    from ..core.aether_client import make_redis
+    from ..core.conn import resolve_redis_kwargs
 
     host = host or os.environ.get("AETHER_STARGAZER_HOST", "127.0.0.1")
     port = int(port if port is not None else os.environ.get("AETHER_STARGAZER_PORT", 8765))
-    db = int(db if db is not None else os.environ.get("AETHER_REDIS_DB", 0))
-    redis_host = redis_host or os.environ.get("AETHER_REDIS_HOST", "localhost")
-    redis_port = int(redis_port if redis_port is not None else os.environ.get("AETHER_REDIS_PORT", 6379))
 
-    raw = redis_lib.Redis(host=redis_host, port=redis_port, db=db, decode_responses=True)
+    raw = make_redis(**resolve_redis_kwargs(cli={"host": redis_host, "port": redis_port, "db": db}))
     app = create_app(ReadOnlyRedis(raw))
     uvicorn.run(app, host=host, port=port)
 

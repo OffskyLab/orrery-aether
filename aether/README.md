@@ -15,13 +15,15 @@
   Horizon）；人類透過一個**獨立、需驗證（localhost+token）、可稽核**的操作面板介入
   （注入／暫停／恢復／終止），**全程不削弱 Stargazer 唯讀不變量**——§16.1-6 對抗測試原封不動仍全綠。
 
-> 範圍外：Redis 高可用、跨機部署（暫緩）。§17 通訊語域（反客套）自 Phase 2 起全程適用。
+> 範圍外：Redis 高可用／叢集（暫緩）。**跨機部署已支援**（密碼+TLS、`aether register`、registry-as-truth；
+> 規格 `docs/cross-machine/02-spec.md`）。§17 通訊語域（反客套）自 Phase 2 起全程適用。
 
 ## 結構
 
 ```
 aether/
-├── docker-compose.yml      # 整套：Redis（AOF）+ Stargazer + 操作面板（皆綁 127.0.0.1）
+├── docker-compose.yml      # 整套：Redis（AOF；6379 loopback / 6380 TLS）+ Stargazer + 操作面板
+├── scripts/make-certs.sh   # 自簽 CA + server cert（含 IP SAN）給跨機 TLS
 ├── Dockerfile              # web image（一份 image、兩個 entrypoint）
 ├── .env.example            # 複製成 .env 填 AETHER_OPERATOR_TOKEN（.env 已 gitignore）
 ├── constellation.yaml      # 測試 Body 星座登錄表
@@ -88,10 +90,18 @@ aether/
 # 1. 啟動 Redis（只要介質）
 docker compose -f aether/docker-compose.yml up -d redis
 
-# 1-all. 或一次跑起整套（Redis + Stargazer + 操作面板，皆綁 127.0.0.1）
+# 1-all. 或一次跑起整套（Redis + Stargazer + 操作面板）
 cp aether/.env.example aether/.env && sed -i '' "s/change-me/$(openssl rand -hex 32)/" aether/.env
 docker compose -f aether/docker-compose.yml up -d --build
 #   Stargazer → http://127.0.0.1:8765（唯讀）   操作面板 → http://127.0.0.1:8770（需 .env token）
+
+# 1-x. 跨機（A=匯流排，B/C 連入）：A 設密碼+TLS、B 用 register 加入
+#   A: echo "AETHER_REDIS_PASSWORD=$(openssl rand -hex 24)" >> aether/.env
+#      aether/scripts/make-certs.sh <A的IP> && docker compose -f aether/docker-compose.yml up -d
+#   B: export AETHER_REDIS_PASSWORD=...   # 同密碼（走 env，不入 profile）
+#      aether register --host <A的IP> --port 6380 --tls --redis-tls-ca ca.crt --id <proj>
+#      aether observatory <proj>          # 對遠端 bus 上線
+#   參數優先序 flag>env>profile>default；bus use 把非密碼端點存 ~/.aether/config.json。
 
 # 2. 安裝相依
 python3 -m pip install -r aether/requirements.txt

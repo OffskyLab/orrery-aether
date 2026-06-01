@@ -22,6 +22,31 @@ status ready，registry/2026-06-01-cross-machine.json)。
 - **Why**：F1 的單一連線入口 + F2/F3 的跨機星圖一致性地基。100 測試綠（88→100），無回歸；additive sync
   在 flushed test db 上與舊 delete-all 結果相同，故既有測試不受影響。
 
+### Step 4–8 — 連線重構 / register / observatory 韌性 / compose+TLS / 文件
+- **Step 4 連線重構（所有入口走 resolver）**：`cli._make_redis`、`run_observatory`、`send_message`、
+  `consult`、`mcp_server`、`stargazer/server.run`、`operator_panel/server.run` 全部改 `make_redis(**
+  resolve_redis_kwargs(...))`；**移除 stargazer/operator 的直建 `redis.Redis`**（AC2：runtime 僅
+  `make_redis` 一處）。連線旗標 None tri-state + `--redis-tls/--redis-no-tls/--redis-password/
+  --redis-username/--redis-tls-ca`（`core/conn.add_redis_cli_opts` 共用）。`cmd_mcp_setup` **先 resolve**
+  再寫 `.mcp.json` env（修 audit H5：否則寫出 `"None"`）。
+- **Step 5 `bus use` / `register`**：`bus use` ping（含 env 密碼）通過才把**非密碼** profile 落盤
+  `~/.aether/config.json`（chmod 600）；`register` = bus use + client setup（原子：ping→落盤）。
+  `cmd_client_setup` 改 `register_body`（只註冊自己、fail-closed、`--force`）。
+- **Step 6 Observatory 韌性**：`register_body(cfg)` 取代 load_and_sync；**null/不存在 working_dir →
+  hard error**；消費迴圈 reconnect/backoff（ConnectionError/Timeout 退避重連 + recover_pending；
+  AuthenticationError 致命）；`--heartbeat-ttl`。
+- **Step 7 compose + certs**：redis command 改 `sh -c set --`：`requirepass "$AETHER_REDIS_PASSWORD"`
+  （**空=auth off，localhost byte-identical**）+ 有 `/certs/redis.crt` 才開 `--tls-port 6380`；ports
+  `127.0.0.1:6379`（loopback）+ `6380`（對外 TLS）；healthcheck auth-aware；redis/stargazer/operator
+  都 `env_file: .env`。新增 `scripts/make-certs.sh`（自簽 CA + server cert 含 **IP SAN** + 印到期日）；
+  `.env.example` + root `.gitignore` 加 `aether/certs/`。
+- **Step 7b conftest**：兩個 redis fixture 加 `password=AETHER_REDIS_PASSWORD`（auth bus 下測試仍連，
+  無密碼不變）（修 audit N1）。
+- **N2**：`AetherBridge.__init__` 的 `except Exception: pass` 改 log warning + 更新過時註解。
+- demos（demo_register / demo_feed / live_capture）seed 改 `sync(prune=True)`。
+- **驗證**：**104 測試綠**（+16 跨機）、7 條 Agent AC 全過、`docker compose config` valid（ports
+  `127.0.0.1:6379`+`6380`、requirepass、healthcheck `-a`）。
+
 ## 2026-05-31 — 統一 `aether` CLI
 
 Spec: `aether/docs/tasks/2026-05-31-aether-cli.md`（status ready）。

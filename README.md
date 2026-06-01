@@ -75,7 +75,7 @@ Two agents replying to each other could loop forever — burning tokens and mone
 > **§17 Communication register / 通訊語域** (anti-pleasantry, anti-sycophancy) applies from Phase 2 onward: a pure `ack`/thank-you reply never leaves the station (`reply_needed=false`, logged as `ack_suppressed`) — silence means "received and understood".
 > **§17 通訊語域**（反客套、反附和）自 Phase 2 起全程適用：純 `ack`／道謝回覆一律不出站，沉默即確認。
 
-> **Out of scope / 範圍外:** Redis high-availability and cross-machine deployment (deferred).
+> **Out of scope / 範圍外:** Redis high-availability / clustering (deferred). Cross-machine deployment (auth + TLS + `aether register`) is now supported — see [Cross-machine](#cross-machine-hub-and-spoke-over-auth--tls--跨機部署密碼--tls). · Redis 高可用／叢集仍延後；跨機部署已支援。
 
 ---
 
@@ -121,9 +121,31 @@ docker compose -f aether/docker-compose.yml up -d --build
 docker compose -f aether/docker-compose.yml down      # stop everything / 全部停止
 ```
 
-**EN** — All three run as containers. The web apps bind `0.0.0.0` *inside* their container but each host port is published on **`127.0.0.1` only**, so they stay reachable from this machine and **not the LAN** — the same localhost-only exposure as running them natively (§15.6 / §18.3). The operator panel reads `AETHER_OPERATOR_TOKEN` from the gitignored `aether/.env`. Redis itself is still published on `6379` for all interfaces (unchanged); lock it to `127.0.0.1:6379:6379` if you never need off-box agents.
+**EN** — All three run as containers. The web apps bind `0.0.0.0` *inside* their container but each host port is published on **`127.0.0.1` only**, so they stay reachable from this machine and **not the LAN** — the same localhost-only exposure as running them natively (§15.6 / §18.3). The operator panel reads `AETHER_OPERATOR_TOKEN` from the gitignored `aether/.env`. Redis's plain port `6379` is now **loopback-only**; the TLS port `6380` is the cross-machine bus (see below).
 
-**中** — 三個服務都在容器裡跑。web app 在容器內綁 `0.0.0.0`，但每個主機埠**只發佈到 `127.0.0.1`**，所以只能本機連、**LAN 連不到**——和原生跑時一樣的 localhost-only 暴露（§15.6／§18.3）。操作面板從 gitignored 的 `aether/.env` 讀 `AETHER_OPERATOR_TOKEN`。Redis 本身仍在 `6379` 對所有介面開放（沿用舊設定）；若不需要跨機 agent，可改成 `127.0.0.1:6379:6379` 鎖死。
+**中** — 三個服務都在容器裡跑。web app 在容器內綁 `0.0.0.0`，但每個主機埠**只發佈到 `127.0.0.1`**，所以只能本機連、**LAN 連不到**——和原生跑時一樣的 localhost-only 暴露（§15.6／§18.3）。操作面板從 gitignored 的 `aether/.env` 讀 `AETHER_OPERATOR_TOKEN`。Redis 的明文埠 `6379` 現在**只綁 loopback**；TLS 埠 `6380` 才是跨機匯流排（見下）。
+
+### Cross-machine: hub-and-spoke over auth + TLS / 跨機部署（密碼 + TLS）
+
+**EN** — One machine A runs Redis as the bus; machines B/C run their own Observatories pointing at A. The transport is machine-agnostic (routing is by logical inbox name; `working_dir` never leaves its host). To secure + connect:
+
+```bash
+# On the BUS machine (A): set a password + (optional) TLS certs, then start
+echo "AETHER_REDIS_PASSWORD=$(openssl rand -hex 24)" >> aether/.env
+aether/scripts/make-certs.sh 172.16.100.55        # IP/host of A → cert SAN; writes aether/certs/
+docker compose -f aether/docker-compose.yml up -d  # TLS auto-enables on :6380
+
+# On a CLIENT machine (B): join the bus + register this project's body
+export AETHER_REDIS_PASSWORD=...                   # same secret (env, never the profile)
+aether register --host 172.16.100.55 --port 6380 --tls --redis-tls-ca /path/to/ca.crt --id my_proj
+aether observatory my_proj                         # go online against the remote bus
+```
+
+`aether bus use …` persists the (non-secret) endpoint to `~/.aether/config.json` so later commands inherit it. Precedence is **flag > env > profile > default**; the **password is taken from `AETHER_REDIS_PASSWORD` only, never stored in the profile**. Each host's `constellation.yaml` should list **only its own body** (registry-as-truth; registering a conflicting id fails closed — use `--force` to override).
+
+**中** — A 機器跑 Redis 當匯流排；B/C 各跑自己的 Observatory 指向 A。傳輸與機器無關（路由用邏輯收件匣名，`working_dir` 不離開本機）。在 A 設密碼+TLS 並啟動，B 用上面的 `aether register --host … --tls` 加入並註冊自己的 body，再 `aether observatory <id>` 上線。`aether bus use` 會把**非密碼**端點存到 `~/.aether/config.json`；參數優先序 **flag > env > profile > default**，**密碼只從 `AETHER_REDIS_PASSWORD` 讀、絕不寫進 profile**。每台的 `constellation.yaml` 只列自己的 body（registry-as-truth；同 id 衝突會 fail-closed，要覆寫用 `--force`）。
+
+> **What auth+TLS does NOT give you / 注意**：a shared password = no per-sender authentication inside the trust domain (anyone with it can write to any inbox); a server cert expiry takes the whole fleet offline at once (rotate early). Redis HA/clustering is still out of scope. · 共享密碼=信任域內無寄件者認證；server cert 到期會全網同時斷線（提早輪替）；Redis 高可用仍不在範圍。
 
 For real `claude -p` e2e tests (slow, run at least once per phase): / 真實 claude e2e 測試（慢、每階段至少跑一次）：
 ```bash

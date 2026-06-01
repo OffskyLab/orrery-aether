@@ -23,15 +23,18 @@ import os
 import sys
 import time
 
+import redis as redis_lib
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aether.core.aether_client import AetherClient, make_redis
 from aether.core.clock import SystemClock
+from aether.core.conn import resolve_redis_kwargs
 from aether.core.control import ControlPlane
 from aether.core.guards import RateLimiter
 from aether.core.heartbeat import Heartbeat
 from aether.core.processing_log import ProcessingLog
-from aether.core.registry import Registry, load_constellation
+from aether.core.registry import DuplicateBodyError, Registry, load_constellation
 from aether.core.session_store import SessionStore
 from aether.observatory.claude_runner import RealClaudeRunner
 from aether.observatory.main import Observatory
@@ -53,9 +56,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Run an Aether Observatory for one project.")
     ap.add_argument("project_id", help="must match a body in constellation.yaml")
     ap.add_argument("--constellation", default=DEFAULT_CONSTELLATION)
-    ap.add_argument("--redis-host", default=os.environ.get("AETHER_REDIS_HOST", "localhost"))
-    ap.add_argument("--redis-port", type=int, default=int(os.environ.get("AETHER_REDIS_PORT", "6379")))
-    ap.add_argument("--redis-db", type=int, default=int(os.environ.get("AETHER_REDIS_DB", "0")))
+    # Connection flags default to None (tri-state) → resolver applies precedence
+    # flag > env > profile > default (bare command == previous behaviour).
+    ap.add_argument("--redis-host", default=None)
+    ap.add_argument("--redis-port", type=int, default=None)
+    ap.add_argument("--redis-db", type=int, default=None)
+    ap.add_argument("--redis-password", default=None)
+    ap.add_argument("--redis-username", default=None)
+    ap.add_argument("--redis-tls", dest="redis_tls", action="store_const", const=True, default=None)
+    ap.add_argument("--redis-no-tls", dest="redis_tls", action="store_const", const=False)
+    ap.add_argument("--redis-tls-ca", default=None)
+    ap.add_argument("--heartbeat-ttl", type=int, default=30,
+                    help="online TTL seconds; raise for high-latency cross-machine links "
+                         "(> 2x worst RTT + beat interval)")
     ap.add_argument("--rate-per-min", type=int, default=20,
                     help="max messages per conversation per minute (cost backstop)")
     ap.add_argument("--block-ms", type=int, default=5000)
@@ -70,20 +83,40 @@ def main(argv=None):
         sys.exit(f"'{args.project_id}' is not in {args.constellation}. "
                  f"Known bodies: {', '.join(bodies) or '(none)'}")
     cfg = bodies[args.project_id]
+    # working_dir guard (spec C5): null = a REMOTE body, must not be started here;
+    # missing dir = misconfig. Both hard-error (was a silent WARNING) so we never
+    # launch claude -p in the wrong / parent cwd.
     working_dir = cfg.working_dir
-    if working_dir and not os.path.isdir(working_dir):
-        print(f"WARNING: working_dir does not exist: {working_dir}")
+    if working_dir is None:
+        sys.exit(f"'{args.project_id}' has working_dir=null (marked remote / not-local) — "
+                 f"do not start its Observatory on this machine.")
+    if not os.path.isdir(working_dir):
+        sys.exit(f"working_dir does not exist: {working_dir}\n"
+                 f"Fix constellation.yaml, or start this Observatory on the machine that has the repo.")
 
-    redis = make_redis(host=args.redis_host, port=args.redis_port, db=args.redis_db)
+    rk = resolve_redis_kwargs(cli={
+        "host": args.redis_host, "port": args.redis_port, "db": args.redis_db,
+        "password": args.redis_password, "username": args.redis_username,
+        "ssl": args.redis_tls, "ssl_ca_certs": args.redis_tls_ca})
+    redis = make_redis(**rk)
     try:
         redis.ping()
+    except redis_lib.exceptions.AuthenticationError as e:
+        sys.exit(f"Redis auth failed at {rk['host']}:{rk['port']}: {e}\n"
+                 f"Set AETHER_REDIS_PASSWORD (or --redis-password) correctly.")
     except Exception as e:
-        sys.exit(f"cannot reach Redis at {args.redis_host}:{args.redis_port} db{args.redis_db}: {e}\n"
+        sys.exit(f"cannot reach Redis at {rk['host']}:{rk['port']} db{rk['db']}: {e}\n"
                  f"Start it:  docker compose -f aether/docker-compose.yml up -d redis")
 
     client = AetherClient(redis)
-    Registry(redis).load_and_sync(args.constellation)  # publish the star chart
-    heartbeat = Heartbeat(redis, ttl_seconds=30, clock=SystemClock())
+    # Register ONLY our own body (additive, fail-closed) — do NOT load_and_sync the
+    # whole local constellation (that would re-register peers and可能撞 conflict).
+    try:
+        Registry(redis).register_body(cfg)
+    except DuplicateBodyError as e:
+        sys.exit(f"{e}\n(Your local constellation conflicts with what's already on the bus "
+                 f"for '{args.project_id}'. Trim it to only your own body, or use a different id.)")
+    heartbeat = Heartbeat(redis, ttl_seconds=args.heartbeat_ttl, clock=SystemClock())
     runner = RealClaudeRunner(
         event_sink=ProgressForwarder(client, verbatim=args.verbatim_telescope),
         read_only=not args.allow_write,
@@ -101,26 +134,43 @@ def main(argv=None):
     )
 
     tools = "WRITE+EXEC (dangerous)" if args.allow_write else "read-only (Read/Glob/Grep)"
+    tls = " TLS" if rk.get("ssl") else ""
+    auth = " +auth" if rk.get("password") else ""
     print(f"=== Observatory '{args.project_id}' online ===")
     print(f"  working_dir : {working_dir}")
-    print(f"  redis       : {args.redis_host}:{args.redis_port} db{args.redis_db}")
+    print(f"  redis       : {rk['host']}:{rk['port']} db{rk['db']}{tls}{auth}")
     print(f"  claude tools: {tools}")
     print(f"  rate limit  : {args.rate_per_min}/min per conversation · Horizon caps every conversation")
     print(f"  watching for messages… (Ctrl+C to stop)\n")
 
     # The resident loop (spec §5.2/§5.4): heartbeat, recover crashed work, flush
-    # offline/paused holds, then poll. Equivalent to Observatory.run_forever but
-    # with friendly logging.
+    # offline/paused holds, then poll. Wrapped with reconnect/backoff so a remote
+    # bus drop (TLS/network) is survived, not fatal; bad auth IS fatal.
     obs.recover_pending()
     obs.flush_hold()
+    backoff = 1
     try:
         while True:
-            heartbeat.beat(args.project_id)
-            obs.flush_hold()
-            obs.flush_paused()
-            n = obs.poll_once(block_ms=args.block_ms)
-            if n:
-                print(f"   [{args.project_id}] processed {n} message(s)")
+            try:
+                heartbeat.beat(args.project_id)
+                obs.flush_hold()
+                obs.flush_paused()
+                n = obs.poll_once(block_ms=args.block_ms)
+                if n:
+                    print(f"   [{args.project_id}] processed {n} message(s)")
+                backoff = 1  # a healthy cycle resets the backoff
+            except redis_lib.exceptions.AuthenticationError as e:
+                sys.exit(f"\nRedis auth failed mid-run: {e}")
+            except (redis_lib.exceptions.ConnectionError, redis_lib.exceptions.TimeoutError) as e:
+                print(f"   [{args.project_id}] Redis connection lost ({e}); retry in {backoff}s…")
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 30)
+                try:
+                    redis.ping()                # re-establish the connection
+                    obs.recover_pending()       # reclaim our pending (PEL) after reconnect
+                    print(f"   [{args.project_id}] reconnected.")
+                except Exception:
+                    pass                        # still down → stay in backoff
     except KeyboardInterrupt:
         print(f"\n=== Observatory '{args.project_id}' offline ===")
 

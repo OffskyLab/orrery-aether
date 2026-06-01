@@ -98,19 +98,20 @@ def run(host=None, port=None, db=None,
     default, so ``run()`` with no args/env behaves exactly as before. Inside a
     container set ``AETHER_OPERATOR_HOST=0.0.0.0`` and ``AETHER_REDIS_HOST=redis``,
     but publish the host port on 127.0.0.1 only — the privileged write path must
-    stay loopback-only at the host boundary, in addition to its token."""
-    import redis as redis_lib
+    stay loopback-only at the host boundary, in addition to its token.
+
+    Redis connection goes through the shared resolver (auth/TLS via AETHER_REDIS_*
+    env); no direct ``redis.Redis`` build here."""
     import uvicorn
+    from ..core.aether_client import make_redis
+    from ..core.conn import resolve_redis_kwargs
 
     host = host or os.environ.get("AETHER_OPERATOR_HOST", "127.0.0.1")
     port = int(port if port is not None else os.environ.get("AETHER_OPERATOR_PORT", 8770))
-    db = int(db if db is not None else os.environ.get("AETHER_REDIS_DB", 0))
-    redis_host = redis_host or os.environ.get("AETHER_REDIS_HOST", "localhost")
-    redis_port = int(redis_port if redis_port is not None else os.environ.get("AETHER_REDIS_PORT", 6379))
     token = token or os.environ.get("AETHER_OPERATOR_TOKEN")
     if not token:
         raise SystemExit("set AETHER_OPERATOR_TOKEN (the operator panel requires a token)")
-    raw = redis_lib.Redis(host=redis_host, port=redis_port, db=db, decode_responses=True)
+    raw = make_redis(**resolve_redis_kwargs(cli={"host": redis_host, "port": redis_port, "db": db}))
     app = create_operator_app(raw, token)
     uvicorn.run(app, host=host, port=port)
 

@@ -61,7 +61,7 @@ def _setup(redis):
     Registry(redis).sync({
         "project_alpha": Body("project_alpha", "frontend", ["ui"], "aether:inbox:project_alpha"),
         "project_beta": Body("project_beta", "backend orders API", ["api"], "aether:inbox:project_beta"),
-    })
+    }, prune=True)   # demo seed → full reset (sync default is additive)
     hb = Heartbeat(redis, ttl_seconds=300, clock=SystemClock())
     hb.beat("project_alpha"); hb.beat("project_beta")
     return hb

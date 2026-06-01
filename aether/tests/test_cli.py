@@ -95,6 +95,27 @@ def test_passthrough_forwards_leading_options(cmd, module, monkeypatch):
     assert captured["argv"] == cmd[n:]          # leading --option survived
 
 
+def test_mcp_setup_claude_cli_resolves_db(tmp_path, monkeypatch):
+    # audit N3: the claude-cli path must also write a resolved db (0), not "None"
+    # (args.redis_db now defaults to None; must be resolved before building -e).
+    import shutil
+    import subprocess
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda _x: "/usr/bin/claude")
+    captured = {}
+
+    def fake_call(cmd):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+    rc = cli.main(["mcp", "setup", "--id", "p", "--method", "claude-cli"])
+    assert rc == 0
+    joined = " ".join(captured["cmd"])
+    assert "AETHER_REDIS_DB=0" in joined
+    assert "AETHER_REDIS_DB=None" not in joined
+
+
 def test_install_shim_writes_executable(tmp_path):
     rc = cli.main(["install-shim", "--dir", str(tmp_path / "bin")])
     assert rc == 0

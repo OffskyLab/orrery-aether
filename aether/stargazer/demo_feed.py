@@ -39,7 +39,7 @@ BODIES = {
 
 
 def _setup(redis):
-    Registry(redis).sync(BODIES)
+    Registry(redis).sync(BODIES, prune=True)   # demo seed → full reset (sync default is additive)
     hb = Heartbeat(redis, ttl_seconds=300, clock=SystemClock())
     for p in BODIES:
         hb.beat(p)

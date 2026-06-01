@@ -59,7 +59,7 @@ def run_conversation():
                              "aether:inbox:project_beta", DIRS["project_beta"]),
         "project_gamma": Body("project_gamma", "data & analytics", ["etl"],
                               "aether:inbox:project_gamma", None),
-    })
+    }, prune=True)   # demo seed → full reset (sync default is additive)
     hb = Heartbeat(redis, ttl_seconds=600, clock=SystemClock())
     for p in ("project_alpha", "project_beta", "project_gamma"):
         hb.beat(p)

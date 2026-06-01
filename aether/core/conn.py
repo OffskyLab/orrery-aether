@@ -29,6 +29,33 @@ _DEFAULTS = {"host": "localhost", "port": 6379, "db": 0}
 _TRUEY = {"1", "true", "yes", "on"}
 
 
+def add_redis_cli_opts(ap) -> None:
+    """Attach the standard --redis-* connection flags (None defaults; precedence
+    is applied later by resolve_redis_kwargs). Shared by the entry-point scripts."""
+    ap.add_argument("--redis-host", default=None)
+    ap.add_argument("--redis-port", type=int, default=None)
+    ap.add_argument("--redis-db", type=int, default=None)
+    ap.add_argument("--redis-password", default=None,
+                    help="prefer AETHER_REDIS_PASSWORD env (avoids shell history)")
+    ap.add_argument("--redis-username", default=None)
+    ap.add_argument("--redis-tls", dest="redis_tls", action="store_const", const=True, default=None)
+    ap.add_argument("--redis-no-tls", dest="redis_tls", action="store_const", const=False)
+    ap.add_argument("--redis-tls-ca", default=None)
+
+
+def redis_cli_dict(args) -> dict:
+    """Build the resolver cli dict from argparse Namespace (any missing → None)."""
+    return {
+        "host": getattr(args, "redis_host", None),
+        "port": getattr(args, "redis_port", None),
+        "db": getattr(args, "redis_db", None),
+        "password": getattr(args, "redis_password", None),
+        "username": getattr(args, "redis_username", None),
+        "ssl": getattr(args, "redis_tls", None),
+        "ssl_ca_certs": getattr(args, "redis_tls_ca", None),
+    }
+
+
 def load_bus_profile(path: str = DEFAULT_PROFILE_PATH) -> dict:
     """Read the persisted bus profile. Never raises — a missing/broken profile
     must never block a localhost run, it just contributes nothing."""

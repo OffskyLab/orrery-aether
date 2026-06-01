@@ -33,6 +33,10 @@ from aether.observatory.main import Observatory  # noqa: E402
 REDIS_HOST = os.environ.get("AETHER_TEST_REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("AETHER_TEST_REDIS_PORT", "6379"))
 REDIS_TEST_DB = int(os.environ.get("AETHER_TEST_REDIS_DB", "15"))
+# If the dev's bus has requirepass set, tests need it too (auth bus). Empty/unset
+# → no password (localhost dev byte-identical). AETHER_TEST_REDIS_PASSWORD overrides.
+REDIS_PASSWORD = (os.environ.get("AETHER_TEST_REDIS_PASSWORD")
+                  or os.environ.get("AETHER_REDIS_PASSWORD") or None)
 
 
 # ---- e2e gating ------------------------------------------------------------
@@ -58,7 +62,7 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(scope="session")
 def _redis_available():
     r = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_TEST_DB,
-                        decode_responses=True)
+                        password=REDIS_PASSWORD, decode_responses=True)
     try:
         r.ping()
     except redis_lib.exceptions.RedisError as e:
@@ -73,7 +77,7 @@ def _redis_available():
 @pytest.fixture
 def r(_redis_available):
     client = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_TEST_DB,
-                             decode_responses=True)
+                             password=REDIS_PASSWORD, decode_responses=True)
     client.flushdb()
     yield client
     client.flushdb()

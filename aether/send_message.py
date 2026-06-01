@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aether.core.aether_client import AetherClient, make_redis
+from aether.core.conn import add_redis_cli_opts, redis_cli_dict, resolve_redis_kwargs
 from aether.core.control import ControlPlane
 from aether.core.envelope import BROADCAST
 from aether.operator_panel.control_service import OperatorService
@@ -39,9 +40,7 @@ def main(argv=None):
     ap.add_argument("--wave", action="store_true", help="broadcast to all bodies")
     ap.add_argument("--solicit", action="store_true", help="(Wave) ask for replies")
     ap.add_argument("--max-hops", type=int, default=8)
-    ap.add_argument("--redis-host", default=os.environ.get("AETHER_REDIS_HOST", "localhost"))
-    ap.add_argument("--redis-port", type=int, default=int(os.environ.get("AETHER_REDIS_PORT", "6379")))
-    ap.add_argument("--redis-db", type=int, default=int(os.environ.get("AETHER_REDIS_DB", "0")))
+    add_redis_cli_opts(ap)
     args = ap.parse_args(argv)
 
     to = BROADCAST if args.wave else args.to
@@ -50,7 +49,7 @@ def main(argv=None):
     if args.solicit and not args.wave:
         ap.error("--solicit only applies to a --wave")
 
-    redis = make_redis(host=args.redis_host, port=args.redis_port, db=args.redis_db)
+    redis = make_redis(**resolve_redis_kwargs(cli=redis_cli_dict(args)))
     redis.ping()
     svc = OperatorService(AetherClient(redis), ControlPlane(redis), actor=args.from_)
     result = svc.inject(to=to, intent=args.intent, text=args.text,

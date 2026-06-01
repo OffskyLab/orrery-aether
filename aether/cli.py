@@ -32,39 +32,69 @@ COMPOSE_FILE = os.path.join(_PKG_DIR, "docker-compose.yml")
 
 
 # --- shared helpers ---------------------------------------------------------
+def _cli_dict(args) -> dict:
+    """Collect the (possibly-None) connection flags into a resolver cli dict."""
+    return {
+        "host": getattr(args, "redis_host", None),
+        "port": getattr(args, "redis_port", None),
+        "db": getattr(args, "redis_db", None),
+        "password": getattr(args, "redis_password", None),
+        "username": getattr(args, "redis_username", None),
+        "ssl": getattr(args, "redis_tls", None),
+        "ssl_ca_certs": getattr(args, "redis_tls_ca", None),
+    }
+
+def _resolved_redis(args) -> dict:
+    from aether.core.conn import resolve_redis_kwargs
+    return resolve_redis_kwargs(cli=_cli_dict(args))
+
 def _make_redis(args):
     from aether.core.aether_client import make_redis
-    return make_redis(host=args.redis_host, port=args.redis_port, db=args.redis_db)
+    return make_redis(**_resolved_redis(args))
 
 def _project_id(args):
     return sanitize_id(args.id) if getattr(args, "id", None) else sanitize_id(os.path.basename(os.getcwd()))
 
 def _add_redis_opts(p):
-    p.add_argument("--redis-host", default=os.environ.get("AETHER_REDIS_HOST", "localhost"))
-    p.add_argument("--redis-port", type=int, default=int(os.environ.get("AETHER_REDIS_PORT", "6379")))
-    p.add_argument("--redis-db", type=int, default=int(os.environ.get("AETHER_REDIS_DB", "0")))
+    # Defaults are None (tri-state): resolve_redis_kwargs applies precedence
+    # flag > env > profile > default, so a bare command behaves exactly as before.
+    p.add_argument("--redis-host", default=None)
+    p.add_argument("--redis-port", type=int, default=None)
+    p.add_argument("--redis-db", type=int, default=None)
+    p.add_argument("--redis-password", default=None,
+                   help="prefer AETHER_REDIS_PASSWORD env over the flag (avoids shell history)")
+    p.add_argument("--redis-username", default=None)
+    p.add_argument("--redis-tls", dest="redis_tls", action="store_const", const=True, default=None,
+                   help="connect over TLS")
+    p.add_argument("--redis-no-tls", dest="redis_tls", action="store_const", const=False,
+                   help="force TLS off (overrides env/profile)")
+    p.add_argument("--redis-tls-ca", default=None, help="CA cert (PEM) for TLS verification")
 
 
 # --- handlers ---------------------------------------------------------------
 def cmd_mcp_setup(args) -> int:
     project = _project_id(args)
     identity = args.identity or f"{project}-mcp"     # stable, never random (C4)
+    # Resolve BEFORE writing — args.redis_* default to None now; passing them raw
+    # would write "None" into .mcp.json env (audit H5). Resolver gives real values.
+    kw = _resolved_redis(args)
+    r_db, r_host, r_port = kw["db"], kw["host"], kw["port"]
     entry = build_mcp_server_entry(
         sys.executable, MCP_SERVER_SCRIPT, identity,           # absolute python (C cross-cutting a)
-        redis_db=args.redis_db, constellation_abs=CONSTELLATION_PATH,
-        redis_host=(args.redis_host if args.redis_host != "localhost" else None),
-        redis_port=(args.redis_port if args.redis_port != 6379 else None))
+        redis_db=r_db, constellation_abs=CONSTELLATION_PATH,
+        redis_host=(r_host if r_host != "localhost" else None),
+        redis_port=(r_port if r_port != 6379 else None))
 
     if args.method == "claude-cli":
         import shutil, subprocess
         if shutil.which("claude"):
             cmd = ["claude", "mcp", "add", "aether", "--scope", args.scope,
-                   "-e", f"AETHER_REDIS_DB={args.redis_db}",
+                   "-e", f"AETHER_REDIS_DB={r_db}",
                    "-e", f"AETHER_CONSTELLATION={CONSTELLATION_PATH}"]
-            if args.redis_host != "localhost":
-                cmd += ["-e", f"AETHER_REDIS_HOST={args.redis_host}"]
-            if args.redis_port != 6379:
-                cmd += ["-e", f"AETHER_REDIS_PORT={args.redis_port}"]
+            if r_host != "localhost":
+                cmd += ["-e", f"AETHER_REDIS_HOST={r_host}"]
+            if r_port != 6379:
+                cmd += ["-e", f"AETHER_REDIS_PORT={r_port}"]
             cmd += ["--", sys.executable, MCP_SERVER_SCRIPT, "--identity", identity]
             print("running:", " ".join(cmd))
             return subprocess.call(cmd)
@@ -127,17 +157,24 @@ def cmd_client_setup(args) -> int:
     else:
         print(f"· body '{project}' already in constellation.yaml (unchanged)")
 
-    # connect to the "server" (Redis)
+    # connect to the "server" (Redis) and register ONLY this body (additive,
+    # fail-closed) — not the whole constellation (which would re-register peers).
+    from aether.core.registry import Body, DuplicateBodyError, Registry
     try:
         r = _make_redis(args)
         r.ping()
-        from aether.core.registry import Registry
-        Registry(r).load_and_sync(CONSTELLATION_PATH)
-        print("✓ connected to Redis and published the star chart")
     except Exception as e:
         print(f"⚠ Redis not reachable ({e}). Start it:", file=sys.stderr)
         print(f"    docker compose -f {COMPOSE_FILE} up -d redis", file=sys.stderr)
         return 1
+    body = Body(project_id=project, description=description, capabilities=capabilities,
+                inbox=inbox_stream(project), working_dir=cwd)
+    try:
+        Registry(r).register_body(body, force=getattr(args, "force", False))
+    except DuplicateBodyError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print("✓ connected to Redis and registered this body")
     print(f"  → To go online (receive messages): aether observatory {project}")
     print("  → To let THIS session reach others in Claude Code: aether mcp setup")
     return 0
@@ -182,6 +219,49 @@ def cmd_install_shim(args) -> int:
     return 0
 
 
+def cmd_bus_use(args) -> int:
+    """Point this machine at a (remote) bus and PERSIST the endpoint to a local
+    gitignored profile, so observatory/send/who/mcp inherit it without re-typing.
+    Pings with the resolved connection (incl. password from env) BEFORE writing,
+    so a half-complete unreachable profile never poisons later commands. The
+    password is NEVER written to the profile (env-only)."""
+    from aether.core.aether_client import make_redis
+    from aether.core.conn import DEFAULT_PROFILE_PATH, resolve_redis_kwargs
+    kw = resolve_redis_kwargs(cli=_cli_dict(args))
+    try:
+        make_redis(**kw).ping()
+    except Exception as e:
+        print(f"ERROR: cannot reach bus at {kw['host']}:{kw['port']} ({e}); profile NOT written.",
+              file=sys.stderr)
+        return 1
+    profile = {"name": "default", "host": kw["host"], "port": kw["port"], "db": kw["db"]}
+    if kw.get("ssl"):
+        profile["ssl"] = True
+    if kw.get("ssl_ca_certs"):
+        profile["ssl_ca_certs"] = kw["ssl_ca_certs"]
+    if kw.get("username"):
+        profile["username"] = kw["username"]
+    os.makedirs(os.path.dirname(DEFAULT_PROFILE_PATH), exist_ok=True)
+    with open(DEFAULT_PROFILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(profile, f, indent=2)
+    os.chmod(DEFAULT_PROFILE_PATH, 0o600)
+    print(f"✓ bus profile saved → {DEFAULT_PROFILE_PATH} "
+          f"({kw['host']}:{kw['port']} db{kw['db']}{' TLS' if kw.get('ssl') else ''})")
+    if kw.get("password"):
+        print("  note: password came from AETHER_REDIS_PASSWORD and was NOT stored in the profile.")
+    return 0
+
+
+def cmd_register(args) -> int:
+    """Convenience: join a (remote) bus + register this project's body. = `bus use`
+    (when --host given, atomically ping→persist) followed by `client setup`."""
+    if getattr(args, "redis_host", None):
+        rc = cmd_bus_use(args)
+        if rc != 0:
+            return rc
+    return cmd_client_setup(args)
+
+
 def _forward(module_name, rest) -> int:
     import importlib
     mod = importlib.import_module(module_name)
@@ -224,7 +304,21 @@ def build_parser() -> argparse.ArgumentParser:
     cs.add_argument("--id"); cs.add_argument("--description")
     cs.add_argument("--capability", action="append", help="repeatable")
     cs.add_argument("--yes", action="store_true", help="non-interactive (use inferred/flag values)")
+    cs.add_argument("--force", action="store_true", help="overwrite an existing body with the same id")
     _add_redis_opts(cs); cs.set_defaults(func=cmd_client_setup)
+
+    # bus use (persist a remote bus endpoint to ~/.aether/config.json)
+    bus = sub.add_parser("bus", help="bus endpoint profile").add_subparsers(dest="sub", required=True)
+    bu = bus.add_parser("use", help="point this machine at a (remote) bus + persist the endpoint")
+    _add_redis_opts(bu); bu.set_defaults(func=cmd_bus_use)
+
+    # register (= bus use + client setup)
+    reg = sub.add_parser("register", help="join a (remote) bus + register this project's body")
+    reg.add_argument("--id"); reg.add_argument("--description")
+    reg.add_argument("--capability", action="append", help="repeatable")
+    reg.add_argument("--yes", action="store_true", help="non-interactive")
+    reg.add_argument("--force", action="store_true", help="overwrite an existing body with the same id")
+    _add_redis_opts(reg); reg.set_defaults(func=cmd_register)
 
     # server status
     sv = sub.add_parser("server", help="bus (Redis) status").add_subparsers(dest="sub", required=True)
