@@ -4,11 +4,10 @@ A thin argparse dispatcher that unifies the existing Aether scripts and adds the
 two setup commands. It does NOT reimplement logic — alias subcommands forward to
 each script's ``main(argv)``.
 
-Install/run options:
-  pipx install git+https://github.com/OffskyLab/orrery-aether   # recommended (PATH, isolated)
-  python3 -m aether.cli <cmd>                  # from a clone
+Runnable three ways (no packaging required, spec C1):
+  python3 -m aether.cli <cmd>
   python3 /abs/path/aether/cli.py <cmd>        # from any cwd
-  aether <cmd>                                 # after `aether install-shim` (clone shim)
+  aether <cmd>                                 # after `aether install-shim`
 """
 from __future__ import annotations
 

@@ -211,10 +211,19 @@ python3 aether/consult.py --to genesis \
 
 ### `aether` CLI
 
-一個 `aether` 指令統一設定與既有腳本。三種跑法（免 pip 安裝）：`python3 -m aether.cli <cmd>`、`python3 <abs>/aether/cli.py <cmd>`，或先 `aether install-shim` 裝一支 `aether` shim 到 PATH。
+一個 `aether` 指令統一設定與既有腳本。
+
+**推薦——用 pipx 安裝**（把 `aether` 裝進隔離 venv 並放上 PATH，免手動 clone）：
 
 ```bash
-python3 -m aether.cli install-shim          # 裝 `aether` 到 ~/.local/bin（一次）
+pipx install git+https://github.com/OffskyLab/orrery-aether
+aether --help
+```
+
+或直接從 clone 跑（免安裝）：`python3 -m aether.cli <cmd>`、`python3 <abs>/aether/cli.py <cmd>`，或 `aether install-shim`（寫一支指回 clone 的薄 shim）。注意：任何要起**server**（Observatory／MCP／Stargazer／operator）的機器都需要本機有程式碼——pipx 或 clone 二選一；只有 Redis bus 本身是跑公開的 `redis:7` image。
+
+```bash
+python3 -m aether.cli install-shim          # 裝一支 shim 到 ~/.local/bin（指向這份 clone）
 aether mcp setup                            # 在當前專案設定 MCP server（→ Claude Code 的「/」工具）
 aether client setup                         # 把當前專案登錄成 Body 並連到 Redis
 aether server status                        # Redis 是否在線 ＋ 誰 online

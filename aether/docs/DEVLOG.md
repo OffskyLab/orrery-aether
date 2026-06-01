@@ -2,6 +2,23 @@
 
 每個邏輯變更一條：what / why / 決策依據。對應 git commit。
 
+## 2026-06-01 — pipx 安裝（packaging，解除 C1 延後）
+
+使用者要「未來可 `pipx install`」。新增標準 Python packaging：
+- `pyproject.toml`（setuptools backend，PEP 621）：dist 名 `aether-bus`、`console_scripts`
+  `aether = aether.cli:main`、runtime deps（redis/PyYAML/fastapi/starlette/sse-starlette/uvicorn/httpx/
+  **mcp**——原本漏在 requirements.txt）、dev extra（pytest）、`package-data` 打包非 .py 資源
+  （constellation.yaml / docker-compose.yml / Dockerfile / mcp.example.json / .env.example / scripts/* /
+  stargazer/web/*）。
+- `aether/__init__.py`（`__version__="0.1.0"`）：從 PEP 420 namespace 改成 regular package，setuptools 才找得到。
+- 更新 cli.py docstring / Dockerfile 註解（不再說 namespace / no packaging）；README×2 補
+  `pipx install git+https://github.com/OffskyLab/orrery-aether`。
+- **Why**：client/server 機器免手動 clone+shim，一行 pipx 裝好 `aether`（碼仍落本機，只是換交付方式）。
+- **驗證**：throwaway venv（modern setuptools）`pip install .` → `aether-bus 0.1.0`、`aether --help` 列全部
+  子指令、6 個 bundled data 檔都在 site-packages、imports OK；104 測試仍綠。
+  （註：本機 pyenv pip 22.0.4 build isolation 會誤建 `UNKNOWN-0.0.0`——old setuptools<61 不讀 `[project]`；
+  pipx 自帶新 toolchain 不受影響。）
+
 ## 2026-06-01 — 跨機部署（Redis auth+TLS / register / 遠端訂閱）
 
 Pipeline：`/plan`(00-plan.md) → `/discuss`(01-discussion.md, consensus 2 rounds, D1–D5) →

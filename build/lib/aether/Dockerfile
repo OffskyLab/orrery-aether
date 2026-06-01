@@ -3,8 +3,8 @@
 #   * Operator panel   (privileged control plane)    python -m aether.operator_panel.server
 # docker-compose.yml picks the entrypoint per service via `command:`.
 #
-# `aether` is a regular package (has aether/__init__.py); it just needs to sit on
-# sys.path under /app — WORKDIR /app + `python -m aether.*`.
+# `aether` is a PEP 420 namespace package (no aether/__init__.py), so it just
+# needs to sit on sys.path under /app — WORKDIR /app + `python -m aether.*`.
 FROM python:3.11-slim
 
 WORKDIR /app

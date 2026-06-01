@@ -211,10 +211,19 @@ To make **"go consult genesis about this detail: …"** work natively inside a p
 
 ### The `aether` CLI
 
-A single `aether` command unifies setup + the existing scripts. Three ways to run it (no pip install needed): `python3 -m aether.cli <cmd>`, `python3 <abs>/aether/cli.py <cmd>`, or install a bare `aether` shim once with `aether install-shim`.
+A single `aether` command unifies setup + the existing scripts.
+
+**Recommended — install with pipx** (puts `aether` on PATH in an isolated venv; no manual clone needed):
 
 ```bash
-python3 -m aether.cli install-shim          # install `aether` into ~/.local/bin (once)
+pipx install git+https://github.com/OffskyLab/orrery-aether
+aether --help
+```
+
+Or run it straight from a clone (no install): `python3 -m aether.cli <cmd>`, `python3 <abs>/aether/cli.py <cmd>`, or `aether install-shim` (writes a thin shim that points back at the clone). Note: any machine that runs a **server** (Observatory / MCP / Stargazer / operator) needs the code present — pipx or clone; only the Redis bus itself runs from the public `redis:7` image.
+
+```bash
+python3 -m aether.cli install-shim          # install a shim into ~/.local/bin (points at this clone)
 aether mcp setup                            # set up the MCP server in this project (→ Claude Code "/" tools)
 aether client setup                         # register this project as a Body + connect to Redis
 aether server status                        # is Redis up + who is online
