@@ -1,0 +1,31 @@
+{
+  "id": "2026-06-01-operator-ui",
+  "file": "aether/docs/operator-ui/02-spec.md",
+  "title": "Operator 操作畫面（web UI）+ remove/unregister body",
+  "status": "ready",
+  "created": "2026-06-01",
+  "depends_on": [],
+  "supersedes": [],
+  "discussion": "aether/docs/operator-ui/01-discussion.md",
+  "plan": "aether/docs/operator-ui/00-plan.md",
+  "preconditions": [
+    "file:aether/operator_panel/server.py",
+    "file:aether/operator_panel/control_service.py",
+    "file:aether/core/registry.py",
+    "file:aether/core/heartbeat.py",
+    "file:aether/stargazer/server.py",
+    "file:pyproject.toml"
+  ],
+  "verification": [
+    "python3 -m pytest aether/tests/test_operator_ui.py aether/tests/test_p4_operator.py -q",
+    "python3 -m pytest aether/tests -q",
+    "grep -Eq '\"aether\\.operator_panel\"[[:space:]]*=[[:space:]]*\\[[^]]*\"web/\\*\"' pyproject.toml",
+    "test \"$(grep -cE 'innerHTML|outerHTML|insertAdjacentHTML|document\\.write' aether/operator_panel/web/index.html)\" = 0"
+  ],
+  "tags": ["feature", "operator", "web-ui", "security"],
+  "status_history": [
+    {"status": "draft", "at": "2026-06-01"},
+    {"status": "audited", "at": "2026-06-01", "note": "internal 4b/5b PASS; discuss=Claude+code-grounded review (external Gemini sandbox-blocked, Codex backgrounded that round); audit-spec external Codex R1=BLOCK(3高/4中/低 all fixed) R2=BLOCK(2 residual: absent-contradiction + 50-limit break, both fixed)"},
+    {"status": "ready", "at": "2026-06-01", "note": "two Codex audit rounds, all findings closed; no remaining high"}
+  ]
+}

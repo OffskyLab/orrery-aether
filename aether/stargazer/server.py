@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
-from ..core.registry import REGISTRY_KEY
+from ..core.registry import REGISTRY_KEY, online_map
 from .events import EventReader
 from .readonly import ReadOnlyRedis
 from .viewmodels import (build_constellation, build_extinction_log,
@@ -36,8 +36,8 @@ def _hop_to_dict(h) -> dict:
 
 
 def _online_map(ro) -> dict:
-    reg = ro.hgetall(REGISTRY_KEY) or {}
-    return {pid: ro.exists(f"{HEARTBEAT_PREFIX}:{pid}") == 1 for pid in reg.keys()}
+    # Delegate to the shared core helper (same heartbeat logic, no duplication).
+    return online_map(ro)
 
 
 async def sse_source(reader: EventReader, last_event_id: Optional[str],

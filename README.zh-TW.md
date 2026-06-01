@@ -117,6 +117,8 @@ docker compose -f aether/docker-compose.yml down      # 全部停止
 
 三個服務都在容器裡跑。web app 在容器內綁 `0.0.0.0`，但每個主機埠**只發佈到 `127.0.0.1`**，所以只能本機連、**LAN 連不到**——和原生跑時一樣的 localhost-only 暴露（§15.6／§18.3）。操作面板從 gitignored 的 `aether/.env` 讀 `AETHER_OPERATOR_TOKEN`。Redis 的明文埠 `6379` 現在**只綁 loopback**；TLS 埠 `6380` 才是跨機匯流排（見下）。
 
+**操作面板現在有 web 操作畫面**：開 `http://127.0.0.1:8770/`、貼上 `AETHER_OPERATOR_TOKEN`，即可 inject／暫停／恢復／終止對話、kill 專案，以及從 registry **移除（unregister）一個 body**。它僅綁 localhost + token，每個動作都稽核在 `aether:events`，且所有 bus 資料一律以純文字（`textContent`，無 `innerHTML`）呈現，惡意 id／訊息偷不到 token。（Stargazer 維持嚴格唯讀——控制只在這裡。）
+
 ### 跨機部署（hub-and-spoke ＋ 密碼 ＋ TLS）
 
 A 機器跑 Redis 當匯流排；B/C 各跑自己的 Observatory 指向 A。傳輸與機器無關（路由用邏輯收件匣名，`working_dir` 不離開本機）。安全連線：

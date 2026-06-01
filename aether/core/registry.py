@@ -145,3 +145,13 @@ class Registry:
 
     def remove(self, project_id: str) -> None:
         self.redis.hdel(REGISTRY_KEY, project_id)
+
+
+def online_map(redis) -> Dict[str, bool]:
+    """Shared online-status map: ``{project_id: heartbeating?}`` for every registered
+    body. Reads only (``hgetall`` + heartbeat ``exists``) → safe under ``ReadOnlyRedis``.
+    Single source for both Stargazer (read-only) and the operator panel, so the
+    heartbeat-key convention is not duplicated (it lives in ``Heartbeat``)."""
+    from .heartbeat import Heartbeat
+    hb = Heartbeat(redis)
+    return {pid: hb.is_online(pid) for pid in (redis.hgetall(REGISTRY_KEY) or {})}

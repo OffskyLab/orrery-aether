@@ -2,6 +2,34 @@
 
 每個邏輯變更一條：what / why / 決策依據。對應 git commit。
 
+## 2026-06-01 — Operator 操作畫面（web UI）+ unregister body
+
+Pipeline：`/plan`(00) → `/discuss`(01, consensus 2 rounds, D1–D5；外部 Gemini 被 sandbox 擋→第一手讀碼，
+Codex 該輪 backgrounded) → `/write-spec`(02) → `/audit-spec`（內部 4b/5b + 外部 **Codex 兩輪**：R1 3高4中、
+R2 2 residual，全修）→ 實作。registry：`tasks/registry/2026-06-01-operator-ui.json`(ready)。
+
+### What
+- `core/registry.py`：新增 `online_map(redis)` 共用 helper（Heartbeat-based、只讀、ReadOnlyRedis 相容）；
+  `stargazer/server.py` 的 `_online_map` 改委派它（去重，行為等價、唯讀不變量不動）。
+- `operator_panel/control_service.py`：`BodyOnlineError` + `OperatorService.unregister`——`Registry.remove`
+  (hdel) + `Heartbeat.go_offline`(刪 heartbeat key，免 online_map 殘影) + `emit_operator_action` 稽核；
+  **online-guard**（heartbeating 時 raise 除非 force）；**absent** body 回 `{state:absent,removed:False}`（不稽核）。
+- `operator_panel/server.py`：`FastAPI(docs_url=None,...)`（關掉無 auth 的 schema 洩漏）；新 routes
+  `POST /unregister`(409 on online)、`GET /api/bodies`、`GET /api/conversations`、`GET /`(FileResponse SPA)；
+  全寫入 + 兩個 read 皆 token-gated，免 token 的只剩 `GET /` 與 `/health`。
+- `operator_panel/web/index.html`（新檔，單檔 vanilla SPA）：token→sessionStorage→Bearer；bodies/
+  conversations 清單 + inject 表單 + 各操作；**所有不可信資料一律 `textContent`/`createElement`，零 innerHTML/
+  outerHTML/insertAdjacentHTML/document.write/...**（防 stored XSS 偷 token）；terminate/kill/unregister
+  confirm-first（kill/unregister 打字確認）。
+- `pyproject.toml`：package-data 加 `"aether.operator_panel" = ["web/*"]`（否則 pip 裝後 `GET /` 404）。
+- `tests/test_operator_ui.py`（新，10 測試）：unregister(removes/audits、absent、online-guard+force)、
+  read endpoints 401+shape、`GET /` 提供 SPA、`online_map`(含 ReadOnlyRedis)。
+- **Why**：把 operator 從「純 HTTP API」升級成有畫面;新增「移除 registry body」這個本來缺的寫入 op。
+- **驗證**：**115 測試綠**（105→115）；7 條 Agent AC 全過；Stargazer 唯讀隔離閘門(test_p4_operator)仍綠；
+  docs 確認關閉；**wheel 內含 operator_panel/web/index.html**（pip 裝不會 404）。
+  audit-fix 過程：AC4b 因我自己註解寫了 "innerHTML" 字樣誤判 → 改註解（一次解決，無反覆）。
+
+
 ## 2026-06-01 — 跨機實機部署回饋的 3 個修正（id 消毒 / constellation 位置 / CA 絕對路徑）
 
 真機把 bus 部署到另一台 + 從 laptop register 時暴露的 UX 坑:

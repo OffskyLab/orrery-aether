@@ -12,11 +12,15 @@ import os
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from ..core.aether_client import AetherClient
 from ..core.control import ControlPlane
-from .control_service import OperatorService
+from ..core.registry import Registry, online_map
+from .control_service import BodyOnlineError, OperatorService
+
+WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
 
 class InjectBody(BaseModel):
@@ -36,6 +40,11 @@ class ProjectBody(BaseModel):
     project_id: str
 
 
+class UnregisterBody(BaseModel):
+    project_id: str
+    force: bool = False
+
+
 def create_operator_app(redis, token: str) -> FastAPI:
     """Build the operator control-plane app over a WRITABLE Redis + a token.
 
@@ -49,7 +58,10 @@ def create_operator_app(redis, token: str) -> FastAPI:
     control = ControlPlane(redis)
     service = OperatorService(client, control)
 
-    app = FastAPI(title="Aether Operator", description="Authenticated control plane")
+    # docs_url/redoc_url/openapi_url disabled: otherwise FastAPI serves the route
+    # schema UNAUTHENTICATED — only GET / (the SPA) and GET /health stay open.
+    app = FastAPI(title="Aether Operator", description="Authenticated control plane",
+                  docs_url=None, redoc_url=None, openapi_url=None)
     app.state.token = token
     app.state.service = service
 
@@ -86,6 +98,47 @@ def create_operator_app(redis, token: str) -> FastAPI:
     @app.post("/kill_project", dependencies=[Depends(require_token)])
     def kill_project(body: ProjectBody):
         return service.kill_project(body.project_id)
+
+    @app.post("/unregister", dependencies=[Depends(require_token)])
+    def unregister(body: UnregisterBody):
+        try:
+            return service.unregister(body.project_id, force=body.force)
+        except BodyOnlineError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+    # ---- reads the UI needs (token-gated; reading on the write service is fine —
+    #      the read-only invariant is Stargazer's, not a global no-read rule) -----
+    @app.get("/api/bodies", dependencies=[Depends(require_token)])
+    def api_bodies():
+        om = online_map(redis)
+        return [
+            {"id": pid, "online": om.get(pid, False), "description": body.description,
+             "capabilities": body.capabilities, "working_dir": body.working_dir}
+            for pid, body in Registry(redis).all().items()
+        ]
+
+    @app.get("/api/conversations", dependencies=[Depends(require_token)])
+    def api_conversations():
+        seen: dict = {}                                  # cid -> row; insertion order = newest thread first
+        for rec in reversed(client.read_events()):       # read_events is oldest→newest
+            cid = rec.get("conversation_id")
+            if not cid:
+                continue
+            row = seen.setdefault(cid, {"conversation_id": cid, "from": None,
+                                        "to": None, "ended": False})
+            if rec.get("event_type") == "terminated":
+                row["ended"] = True
+            if row["from"] is None and rec.get("event_type") == "message":
+                env = rec.get("envelope") or {}
+                row["from"], row["to"] = env.get("from"), env.get("to")
+        return list(seen.values())[:50]                  # scan all, THEN slice (don't truncate mid-fill)
+
+    @app.get("/")  # the operator SPA — static page, no auth (actions are token-gated)
+    def index():
+        path = os.path.join(WEB_DIR, "index.html")
+        if os.path.exists(path):
+            return FileResponse(path)
+        return HTMLResponse("<h1>Aether Operator</h1><p>web/index.html not found</p>")
 
     return app
 

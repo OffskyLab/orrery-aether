@@ -16,6 +16,12 @@ from ..core.envelope import new_envelope
 OPERATOR_ACTOR = "operator"
 
 
+class BodyOnlineError(Exception):
+    """Raised by ``unregister`` when the target body is still heartbeating and
+    ``force`` was not given — removing it would just be undone by its live
+    Observatory's next ``register_body`` (the HTTP layer maps this to 409)."""
+
+
 class OperatorService:
     def __init__(self, client: AetherClient, control: ControlPlane,
                  actor: str = OPERATOR_ACTOR) -> None:
@@ -67,3 +73,25 @@ class OperatorService:
         self.client.emit_operator_action(self.actor, "kill_project", project_id=project_id,
                                          reason="operator_kill")
         return {"project_id": project_id, "state": "killed"}
+
+    # ---- unregister (remove a body from the registry, audited) -------------
+    def unregister(self, project_id: str, *, force: bool = False) -> dict:
+        """Remove a body from the registry (so it disappears from who/Stargazer).
+
+        Registry hdel + delete its heartbeat key (no ghost in online_map) + audit.
+        Surgical: does NOT purge the body's inbox/hold/proclog (that is data and
+        could drop undelivered messages). Refuses an ONLINE body unless ``force``
+        (a live Observatory would just re-register it)."""
+        from ..core.registry import Registry
+        from ..core.heartbeat import Heartbeat
+        reg = Registry(self.client.r)
+        hb = Heartbeat(self.client.r)
+        if not reg.has(project_id):
+            return {"project_id": project_id, "state": "absent", "removed": False}
+        if hb.is_online(project_id) and not force:
+            raise BodyOnlineError(
+                f"body '{project_id}' is online — stop its Observatory first, or pass force=true")
+        reg.remove(project_id)
+        hb.go_offline(project_id)        # delete heartbeat key → no stale 'online' in online_map
+        self.client.emit_operator_action(self.actor, "unregister", project_id=project_id)
+        return {"project_id": project_id, "state": "removed", "removed": True}

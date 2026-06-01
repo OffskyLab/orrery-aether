@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aether Operator</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #0b0e14; color: #c9d1d9; margin: 0; padding: 1.2rem 1.4rem; }
+  h1 { font-size: 1.1rem; margin: 0 0 .2rem; }
+  .sub { color: #6e7681; margin: 0 0 1rem; font-size: .8rem; }
+  section { border: 1px solid #1e2633; border-radius: 8px; padding: .8rem 1rem; margin: .8rem 0; }
+  h2 { font-size: .9rem; margin: 0 0 .6rem; color: #58a6ff; }
+  input, select, button { font: inherit; background: #0d1117; color: #c9d1d9;
+         border: 1px solid #30363d; border-radius: 5px; padding: .3rem .5rem; }
+  button { cursor: pointer; }
+  button:hover { border-color: #58a6ff; }
+  button.danger { border-color: #6e2b2b; color: #ff7b72; }
+  button.danger:hover { border-color: #ff7b72; }
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; padding: .35rem 0;
+         border-bottom: 1px solid #161b22; }
+  .row:last-child { border-bottom: 0; }
+  .grow { flex: 1; min-width: 8rem; }
+  .dot-on { color: #3fb950; } .dot-off { color: #6e7681; }
+  .muted { color: #6e7681; }
+  #status { white-space: pre-wrap; background: #0d1117; border: 1px solid #30363d;
+            border-radius: 5px; padding: .5rem; min-height: 1.2rem; }
+  label { display: inline-flex; gap: .3rem; align-items: center; }
+  .formgrid { display: grid; grid-template-columns: max-content 1fr; gap: .4rem .6rem; align-items: center; }
+</style>
+</head>
+<body>
+  <h1>Aether Operator</h1>
+  <p class="sub">Authenticated control plane · localhost only · every action is audited on aether:events</p>
+
+  <section>
+    <h2>Token</h2>
+    <div class="row">
+      <input id="token" class="grow" type="password" placeholder="paste AETHER_OPERATOR_TOKEN" autocomplete="off">
+      <button id="saveToken">Save</button>
+      <button id="refresh">Refresh lists</button>
+      <span id="tokenState" class="muted"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Status</h2>
+    <div id="status"></div>
+  </section>
+
+  <section>
+    <h2>Bodies (registry)</h2>
+    <div id="bodies"><span class="muted">set a token and Refresh</span></div>
+  </section>
+
+  <section>
+    <h2>Conversations (recent)</h2>
+    <div id="conversations"><span class="muted">set a token and Refresh</span></div>
+  </section>
+
+  <section>
+    <h2>Inject (send as operator)</h2>
+    <div class="formgrid">
+      <span>to</span><input id="inj_to" placeholder="recipient project_id">
+      <span>intent</span>
+      <select id="inj_intent"><option>inform</option><option>ask</option><option>task</option><option>result</option></select>
+      <span>text</span><input id="inj_text" placeholder="self-contained message">
+      <span>conversation_id</span><input id="inj_cid" placeholder="(optional — continue a thread)">
+      <span>options</span>
+      <span><label><input id="inj_solicit" type="checkbox"> solicit</label>
+            &nbsp; max_hops <input id="inj_maxhops" type="number" value="8" style="width:4rem"></span>
+    </div>
+    <div class="row"><button id="doInject">Inject</button></div>
+  </section>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const TOKEN_KEY = "aether_op_token";
+
+function setStatus(msg, isError) {
+  const el = $("status");
+  el.textContent = (isError ? "⚠ " : "") + msg;      // textContent → never interprets HTML
+  el.style.color = isError ? "#ff7b72" : "#c9d1d9";
+}
+function getToken() { return sessionStorage.getItem(TOKEN_KEY) || ""; }
+function authHeaders(json) {
+  const h = { "Authorization": "Bearer " + getToken() };
+  if (json) h["Content-Type"] = "application/json";
+  return h;
+}
+function reflectTokenState() {
+  $("tokenState").textContent = getToken() ? "token set (this tab only)" : "no token";
+}
+
+async function api(method, path, body) {
+  if (!getToken() && path !== "/health") { setStatus("set a valid token first", true); throw new Error("no token"); }
+  const opt = { method, headers: authHeaders(!!body) };
+  if (body) opt.body = JSON.stringify(body);
+  const res = await fetch(path, opt);
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* non-JSON */ }
+  if (res.status === 401) { setStatus("401 — invalid/missing token; set it above", true); throw new Error("401"); }
+  if (res.status === 409) { setStatus("409 — " + ((data && data.detail) || "body online; stop its Observatory or use force"), true); throw new Error("409"); }
+  if (!res.ok) { setStatus(method + " " + path + " → HTTP " + res.status, true); throw new Error(String(res.status)); }
+  return data;
+}
+
+// type-the-id confirm for the most destructive actions (DX guard; the real
+// control is the server token + audit — a direct API call bypasses this).
+function confirmTyped(id, verb) {
+  const typed = window.prompt("Type the id to confirm " + verb + ":\n" + id);
+  return typed === id;
+}
+
+function makeButton(label, danger, onClick) {
+  const b = document.createElement("button");
+  b.textContent = label;                              // textContent
+  if (danger) b.className = "danger";
+  b.addEventListener("click", onClick);
+  return b;
+}
+function textSpan(text, cls) {
+  const s = document.createElement("span");
+  s.textContent = text == null ? "" : String(text);   // textContent → XSS-safe for ids/text/reasons
+  if (cls) s.className = cls;
+  return s;
+}
+
+async function loadBodies() {
+  const box = $("bodies");
+  const rows = await api("GET", "/api/bodies");
+  box.replaceChildren();                              // clear — replaceChildren takes nodes, not markup
+  if (!rows.length) { box.appendChild(textSpan("(no bodies registered)", "muted")); return; }
+  for (const b of rows) {
+    const row = document.createElement("div"); row.className = "row";
+    row.appendChild(textSpan(b.online ? "●" : "○", b.online ? "dot-on" : "dot-off"));
+    row.appendChild(textSpan(b.id, "grow"));
+    row.appendChild(textSpan(b.description || "", "muted grow"));
+    row.appendChild(makeButton("kill_project", true, async () => {
+      if (!confirmTyped(b.id, "kill_project")) return;
+      setStatus(JSON.stringify(await api("POST", "/kill_project", { project_id: b.id })));
+    }));
+    row.appendChild(makeButton("unregister", true, async () => {
+      if (!confirmTyped(b.id, "unregister")) return;
+      const force = b.online && window.confirm(b.id + " is online — force-remove anyway?");
+      setStatus(JSON.stringify(await api("POST", "/unregister", { project_id: b.id, force })));
+      loadBodies();
+    }));
+    box.appendChild(row);
+  }
+}
+
+async function loadConversations() {
+  const box = $("conversations");
+  const rows = await api("GET", "/api/conversations");
+  box.replaceChildren();
+  if (!rows.length) { box.appendChild(textSpan("(no conversations)", "muted")); return; }
+  for (const c of rows) {
+    const row = document.createElement("div"); row.className = "row";
+    row.appendChild(textSpan(c.conversation_id, "grow"));
+    row.appendChild(textSpan((c.from || "?") + " → " + (c.to || "?"), "muted"));
+    if (c.ended) row.appendChild(textSpan("[ended]", "muted"));
+    row.appendChild(makeButton("pause", false, async () =>
+      setStatus(JSON.stringify(await api("POST", "/pause", { conversation_id: c.conversation_id })))));
+    row.appendChild(makeButton("resume", false, async () =>
+      setStatus(JSON.stringify(await api("POST", "/resume", { conversation_id: c.conversation_id })))));
+    row.appendChild(makeButton("terminate", true, async () => {
+      if (!window.confirm("Terminate conversation " + c.conversation_id + "?")) return;
+      setStatus(JSON.stringify(await api("POST", "/terminate", { conversation_id: c.conversation_id })));
+      loadConversations();
+    }));
+    box.appendChild(row);
+  }
+}
+
+$("saveToken").addEventListener("click", () => {
+  sessionStorage.setItem(TOKEN_KEY, $("token").value.trim());
+  $("token").value = "";
+  reflectTokenState();
+  setStatus("token saved for this tab");
+});
+$("refresh").addEventListener("click", async () => {
+  try { await loadBodies(); await loadConversations(); setStatus("lists refreshed"); }
+  catch (e) { /* api() already reported */ }
+});
+$("doInject").addEventListener("click", async () => {
+  const to = $("inj_to").value.trim(), text = $("inj_text").value;
+  if (!to || !text) { setStatus("inject needs 'to' and 'text'", true); return; }
+  const body = {
+    to, intent: $("inj_intent").value, text,
+    conversation_id: $("inj_cid").value.trim() || null,
+    solicit: $("inj_solicit").checked, max_hops: parseInt($("inj_maxhops").value, 10) || 8,
+  };
+  try { setStatus(JSON.stringify(await api("POST", "/inject", body))); loadConversations(); }
+  catch (e) { /* reported */ }
+});
+
+reflectTokenState();
+</script>
+</body>
+</html>

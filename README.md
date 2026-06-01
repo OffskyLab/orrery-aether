@@ -117,6 +117,8 @@ docker compose -f aether/docker-compose.yml down      # stop everything
 
 All three run as containers. The web apps bind `0.0.0.0` *inside* their container but each host port is published on **`127.0.0.1` only**, so they stay reachable from this machine and **not the LAN** — the same localhost-only exposure as running them natively (§15.6 / §18.3). The operator panel reads `AETHER_OPERATOR_TOKEN` from the gitignored `aether/.env`. Redis's plain port `6379` is now **loopback-only**; the TLS port `6380` is the cross-machine bus (see below).
 
+The **operator panel serves a web control UI** at `http://127.0.0.1:8770/` — open it, paste your `AETHER_OPERATOR_TOKEN`, and you can inject / pause / resume / terminate conversations, kill a project, and **remove (unregister) a body** from the registry. It's localhost-only + token-gated, every action is audited on `aether:events`, and all bus data is rendered as text (no `innerHTML`) so a malicious id/message can't steal the token. (Stargazer stays strictly read-only — control lives only here.)
+
 ### Cross-machine: hub-and-spoke over auth + TLS
 
 One machine A runs Redis as the bus; machines B/C run their own Observatories pointing at A. The transport is machine-agnostic (routing is by logical inbox name; `working_dir` never leaves its host). To secure + connect:
