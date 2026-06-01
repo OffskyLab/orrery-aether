@@ -155,11 +155,23 @@ def create_app(ro_redis, *, recent_window: int = 200, web_dir: str = WEB_DIR) ->
     return app
 
 
-def run(host: str = "127.0.0.1", port: int = 8765, db: int = 0,
-        redis_host: str = "localhost", redis_port: int = 6379):  # pragma: no cover
-    """Launch Stargazer bound to localhost only (spec §15.6 decision 3)."""
+def run(host=None, port=None, db=None,
+        redis_host=None, redis_port=None):  # pragma: no cover
+    """Launch Stargazer. Binds localhost only by default (spec §15.6 decision 3).
+
+    Every parameter falls back to an ``AETHER_*`` env var, then to the original
+    hard-coded default — so calling ``run()`` with no args and no env is
+    identical to before. Inside a container set ``AETHER_STARGAZER_HOST=0.0.0.0``
+    and ``AETHER_REDIS_HOST=redis``, but publish the host port on 127.0.0.1 only
+    so the localhost-only EXPOSURE invariant still holds at the host boundary."""
     import redis as redis_lib
     import uvicorn
+
+    host = host or os.environ.get("AETHER_STARGAZER_HOST", "127.0.0.1")
+    port = int(port if port is not None else os.environ.get("AETHER_STARGAZER_PORT", 8765))
+    db = int(db if db is not None else os.environ.get("AETHER_REDIS_DB", 0))
+    redis_host = redis_host or os.environ.get("AETHER_REDIS_HOST", "localhost")
+    redis_port = int(redis_port if redis_port is not None else os.environ.get("AETHER_REDIS_PORT", 6379))
 
     raw = redis_lib.Redis(host=redis_host, port=redis_port, db=db, decode_responses=True)
     app = create_app(ReadOnlyRedis(raw))

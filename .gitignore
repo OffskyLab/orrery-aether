@@ -11,3 +11,6 @@ __pycache__/
 aether-redis-data/
 # local-scope MCP config (machine-specific absolute paths) — keep out of history
 .mcp.local.json
+# operator-panel secret (token) — never commit; use .env.example as the template
+.env
+aether/.env

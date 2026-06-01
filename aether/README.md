@@ -21,7 +21,9 @@
 
 ```
 aether/
-├── docker-compose.yml      # 只有 Redis（AOF 持久化）
+├── docker-compose.yml      # 整套：Redis（AOF）+ Stargazer + 操作面板（皆綁 127.0.0.1）
+├── Dockerfile              # web image（一份 image、兩個 entrypoint）
+├── .env.example            # 複製成 .env 填 AETHER_OPERATOR_TOKEN（.env 已 gitignore）
 ├── constellation.yaml      # 測試 Body 星座登錄表
 ├── core/                   # 不依賴 claude CLI（規格 §11.2 / §14.2）
 │   ├── envelope.py         # 信封：建立 / 驗證 / 序列化 + 可推導 reply id（§13.1）
@@ -83,8 +85,13 @@ aether/
 ## 跑起來
 
 ```bash
-# 1. 啟動 Redis
+# 1. 啟動 Redis（只要介質）
 docker compose -f aether/docker-compose.yml up -d redis
+
+# 1-all. 或一次跑起整套（Redis + Stargazer + 操作面板，皆綁 127.0.0.1）
+cp aether/.env.example aether/.env && sed -i '' "s/change-me/$(openssl rand -hex 32)/" aether/.env
+docker compose -f aether/docker-compose.yml up -d --build
+#   Stargazer → http://127.0.0.1:8765（唯讀）   操作面板 → http://127.0.0.1:8770（需 .env token）
 
 # 2. 安裝相依
 python3 -m pip install -r aether/requirements.txt
@@ -216,7 +223,9 @@ prompts reads-prefetch / writes-instruction-only；constellation append-only（P
    放在 `ProgressForwarder(verbatim=True)` 開關後面（預設關）。
 2. **事件保留** → `aether:events` 以 `XADD MAXLEN ~50000` 近似裁剪；初次載入只讀有界
    近期窗口（`recent(window)`，預設 200），非全歷史。
-3. **暴露範圍** → Stargazer 僅綁 `127.0.0.1`（`server.run` 預設），不對外。
+3. **暴露範圍** → Stargazer 僅綁 `127.0.0.1`（`server.run` 預設），不對外。Docker 跑時，
+   容器內綁 `0.0.0.0`（`AETHER_STARGAZER_HOST`／`AETHER_OPERATOR_HOST`），但 compose 的
+   主機埠只發佈到 `127.0.0.1`，所以 LAN 仍連不到——同一條 localhost-only 不變量。
 
 ## §13.6 拍板決定（你已確認）
 

@@ -1,5 +1,19 @@
-# Aether Phase 1 — only Redis (the "介質").
-# Stargazer is Phase 3, so it is intentionally absent here.
+# Aether full local stack: the medium (Redis) + both web interfaces.
+#
+#   redis      — the "介質" / MQ. AOF-persisted so unACKed Streams entries survive
+#                a restart (spec §2.4, scenario 6).
+#   stargazer  — READ-ONLY dashboard (§15). Harmless, so it is always on.
+#   operator   — PRIVILEGED control plane (§18): inject / pause / resume /
+#                terminate / kill. Guarded by localhost + token.
+#
+# Run everything:   docker compose -f aether/docker-compose.yml up -d
+# (Stargazer needs no secret; the operator panel reads AETHER_OPERATOR_TOKEN from
+#  aether/.env — copy .env.example to .env, or `aether web up` generates one.)
+#
+# EXPOSURE INVARIANT (§15.6 / §18.3): the web apps bind 0.0.0.0 *inside* their
+# container, but every host port below is published on 127.0.0.1 only — so they
+# are reachable from this machine and NOT from the LAN, exactly as when run
+# natively. Do not change "127.0.0.1:" to a bare port.
 services:
   redis:
     image: redis:7
@@ -14,6 +28,50 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
+      timeout: 3s
+      retries: 10
+
+  stargazer:
+    build:
+      context: .
+    image: aether-web
+    container_name: aether-stargazer
+    command: ["python", "-m", "aether.stargazer.server"]
+    environment:
+      AETHER_STARGAZER_HOST: "0.0.0.0"   # bind all interfaces *inside* the container…
+      AETHER_REDIS_HOST: "redis"         # …reach Redis by its compose service name
+      AETHER_REDIS_DB: "0"
+    ports:
+      - "127.0.0.1:8765:8765"            # …but expose to the host on loopback only
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  operator:
+    build:
+      context: .
+    image: aether-web
+    container_name: aether-operator
+    command: ["python", "-m", "aether.operator_panel.server"]
+    env_file:
+      - .env                             # AETHER_OPERATOR_TOKEN (gitignored)
+    environment:
+      AETHER_OPERATOR_HOST: "0.0.0.0"
+      AETHER_REDIS_HOST: "redis"
+      AETHER_REDIS_DB: "0"
+    ports:
+      - "127.0.0.1:8770:8770"            # privileged path: loopback-only + token
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8770/health')"]
+      interval: 5s
       timeout: 3s
       retries: 10
 

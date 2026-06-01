@@ -90,13 +90,23 @@ def create_operator_app(redis, token: str) -> FastAPI:
     return app
 
 
-def run(host: str = "127.0.0.1", port: int = 8770, db: int = 0,
-        redis_host: str = "localhost", redis_port: int = 6379,
+def run(host=None, port=None, db=None,
+        redis_host=None, redis_port=None,
         token: Optional[str] = None):  # pragma: no cover
-    """Launch the operator panel bound to localhost only (§18.3 decision 1)."""
+    """Launch the operator panel. Binds localhost only by default (§18.3 decision
+    1). Every parameter falls back to an ``AETHER_*`` env var then the original
+    default, so ``run()`` with no args/env behaves exactly as before. Inside a
+    container set ``AETHER_OPERATOR_HOST=0.0.0.0`` and ``AETHER_REDIS_HOST=redis``,
+    but publish the host port on 127.0.0.1 only — the privileged write path must
+    stay loopback-only at the host boundary, in addition to its token."""
     import redis as redis_lib
     import uvicorn
 
+    host = host or os.environ.get("AETHER_OPERATOR_HOST", "127.0.0.1")
+    port = int(port if port is not None else os.environ.get("AETHER_OPERATOR_PORT", 8770))
+    db = int(db if db is not None else os.environ.get("AETHER_REDIS_DB", 0))
+    redis_host = redis_host or os.environ.get("AETHER_REDIS_HOST", "localhost")
+    redis_port = int(redis_port if redis_port is not None else os.environ.get("AETHER_REDIS_PORT", 6379))
     token = token or os.environ.get("AETHER_OPERATOR_TOKEN")
     if not token:
         raise SystemExit("set AETHER_OPERATOR_TOKEN (the operator panel requires a token)")

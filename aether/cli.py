@@ -188,6 +188,20 @@ def _forward(module_name, rest) -> int:
     return int(mod.main(rest) or 0)
 
 
+# Commands that forward the rest of the command line VERBATIM to an existing
+# script's main(). Dispatched in main() BEFORE argparse: argparse.REMAINDER
+# mishandles a remainder that STARTS WITH AN OPTION (`aether send --to x` →
+# "unrecognized arguments: --to"; CPython bpo-17050). Intercepting here is what
+# makes leading options forward correctly. Keys are argv prefixes (longest match
+# wins — `mcp serve` must beat a bare `mcp`).
+_PASSTHROUGH = {
+    ("observatory",): "aether.run_observatory",
+    ("send",): "aether.send_message",
+    ("consult",): "aether.consult",
+    ("mcp", "serve"): "aether.mcp_server",
+}
+
+
 # --- parser -----------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="aether", description="Aether — cross-project agent bus CLI.")
@@ -226,11 +240,14 @@ def build_parser() -> argparse.ArgumentParser:
     sh.add_argument("--dir", default="~/.local/bin")
     sh.set_defaults(func=cmd_install_shim)
 
-    # aliases → forward to existing scripts
-    for name, mod in [("observatory", "aether.run_observatory"),
-                      ("send", "aether.send_message"),
-                      ("consult", "aether.consult")]:
-        a = sub.add_parser(name, help=f"alias for {mod.split('.')[-1]}.py")
+    # aliases (single-token passthroughs) — listed here so `aether --help` shows
+    # them and positional-only invocations still parse. Real dispatch happens in
+    # main()'s pre-argparse passthrough (see _PASSTHROUGH), which also forwards
+    # LEADING OPTIONS correctly. `mcp serve` is registered under `mcp` above.
+    for prefix, mod in _PASSTHROUGH.items():
+        if len(prefix) != 1:
+            continue
+        a = sub.add_parser(prefix[0], help=f"alias for {mod.split('.')[-1]}.py")
         a.add_argument("rest", nargs=argparse.REMAINDER)
         a.set_defaults(func=(lambda m: (lambda args: _forward(m, args.rest)))(mod))
 
@@ -238,6 +255,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # Passthrough commands forward verbatim — intercept before argparse so a
+    # leading option (e.g. `send --to ...`) isn't eaten by the top-level parser.
+    for prefix, mod in sorted(_PASSTHROUGH.items(), key=lambda kv: -len(kv[0])):
+        if tuple(argv[:len(prefix)]) == prefix:
+            return _forward(mod, argv[len(prefix):])
     args = build_parser().parse_args(argv)
     return int(args.func(args) or 0)
 

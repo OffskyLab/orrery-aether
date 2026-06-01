@@ -1,0 +1,8 @@
+# Keep the web image lean and never bake secrets into a layer.
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+docs/
+*.md

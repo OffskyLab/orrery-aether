@@ -107,6 +107,24 @@ python3 -m aether.stargazer.server         # → http://127.0.0.1:8765
 AETHER_OPERATOR_TOKEN=secret python3 -m aether.operator_panel.server   # → http://127.0.0.1:8770
 ```
 
+### Run the whole stack with Docker / 用 Docker 一次跑起整套
+
+```bash
+# Set the operator token once (gitignored) / 設定一次 operator token（已 gitignore）
+cp aether/.env.example aether/.env && sed -i '' "s/change-me/$(openssl rand -hex 32)/" aether/.env
+
+# Build the web image and start Redis + Stargazer + Operator panel together
+# 一鍵建置 web image 並同時啟動 Redis + Stargazer + 操作面板
+docker compose -f aether/docker-compose.yml up -d --build
+#   Stargazer  → http://127.0.0.1:8765   (read-only · 唯讀)
+#   Operator   → http://127.0.0.1:8770   (needs the token in aether/.env · 需 .env 內的 token)
+docker compose -f aether/docker-compose.yml down      # stop everything / 全部停止
+```
+
+**EN** — All three run as containers. The web apps bind `0.0.0.0` *inside* their container but each host port is published on **`127.0.0.1` only**, so they stay reachable from this machine and **not the LAN** — the same localhost-only exposure as running them natively (§15.6 / §18.3). The operator panel reads `AETHER_OPERATOR_TOKEN` from the gitignored `aether/.env`. Redis itself is still published on `6379` for all interfaces (unchanged); lock it to `127.0.0.1:6379:6379` if you never need off-box agents.
+
+**中** — 三個服務都在容器裡跑。web app 在容器內綁 `0.0.0.0`，但每個主機埠**只發佈到 `127.0.0.1`**，所以只能本機連、**LAN 連不到**——和原生跑時一樣的 localhost-only 暴露（§15.6／§18.3）。操作面板從 gitignored 的 `aether/.env` 讀 `AETHER_OPERATOR_TOKEN`。Redis 本身仍在 `6379` 對所有介面開放（沿用舊設定）；若不需要跨機 agent，可改成 `127.0.0.1:6379:6379` 鎖死。
+
 For real `claude -p` e2e tests (slow, run at least once per phase): / 真實 claude e2e 測試（慢、每階段至少跑一次）：
 ```bash
 cd aether && python3 -m pytest -q --run-e2e -m e2e

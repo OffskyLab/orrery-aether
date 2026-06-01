@@ -72,6 +72,29 @@ def test_client_setup_appends_body(tmp_path, monkeypatch, r):
     assert parsed["bodies"]["myproj"]["working_dir"] == str(tmp_path)
 
 
+@pytest.mark.parametrize("cmd, module", [
+    (["send", "--to", "genesis", "--from", "x", "--text", "hi"], "aether.send_message"),
+    (["observatory", "--redis-db", "9", "genesis"], "aether.run_observatory"),
+    (["mcp", "serve", "--identity", "p-mcp"], "aether.mcp_server"),
+])
+def test_passthrough_forwards_leading_options(cmd, module, monkeypatch):
+    # Regression for the alias bug: argparse.REMAINDER drops a forwarded arg that
+    # starts with an option (bpo-17050). The pre-argparse passthrough must hand
+    # the underlying script's main() everything after the command, verbatim.
+    import importlib
+    mod = importlib.import_module(module)
+    captured = {}
+
+    def fake_main(argv=None):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(mod, "main", fake_main)
+    n = 2 if cmd[:2] == ["mcp", "serve"] else 1
+    assert cli.main(cmd) == 0
+    assert captured["argv"] == cmd[n:]          # leading --option survived
+
+
 def test_install_shim_writes_executable(tmp_path):
     rc = cli.main(["install-shim", "--dir", str(tmp_path / "bin")])
     assert rc == 0
