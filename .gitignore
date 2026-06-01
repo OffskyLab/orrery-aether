@@ -16,3 +16,8 @@ aether-redis-data/
 aether/.env
 # TLS material for the cross-machine bus — never commit private keys
 aether/certs/
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
