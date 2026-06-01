@@ -47,6 +47,21 @@ status ready，registry/2026-06-01-cross-machine.json)。
 - **驗證**：**104 測試綠**（+16 跨機）、7 條 Agent AC 全過、`docker compose config` valid（ports
   `127.0.0.1:6379`+`6380`、requirepass、healthcheck `-a`）。
 
+### 真機驗證（隔離 compose，不動 running aether-redis）+ 2 個實機修正
+- 用 `docs/cross-machine/verify-override.yml` 把**真 compose 的 redis 服務** override 成獨立
+  `aether-redis-verify`（6390 明文 / 6391 TLS，密碼經 `environment` 注入，不碰 `aether/.env`），
+  `make-certs.sh 127.0.0.1` 產真憑證（SAN `IP:127.0.0.1`），`-p aether-verify up -d redis`。
+- 驗證全過：TLS+正確密碼 PING ok；**錯誤/無密碼 → 拒絕（AuthenticationError）**；明文 loopback+密碼 ok；
+  訊息 A→B 經 TLS+auth round-trip；`register_body` over TLS duplicate fail-closed；`aether bus use
+  --host … --tls --tls-ca …` 落盤 profile **不含密碼**、ping-fail 不落盤。
+- **實機修正 1（compose）**：redis TLS 預設要求 client cert（mTLS）→ 加 `--tls-auth-clients no`
+  （本設計是 server-auth TLS + 密碼，mTLS 為 non-goal）。
+- **實機修正 2（CLI flag）**：`bus use` / `register` 原誤用 `_add_redis_opts`（`--redis-host`），與
+  使用者 goal + spec 的 `aether register --host … --port …` 不符 → 新增 `_add_bus_opts`
+  （`--host/--port/--db/--password/--username/--tls/--no-tls/--tls-ca`，dest 對齊 redis_*）；
+  修對應測試 + README flag。
+- teardown：`down -v` + 刪 certs/temp，real aether-redis 全程未動。104 測試仍綠。
+
 ## 2026-05-31 — 統一 `aether` CLI
 
 Spec: `aether/docs/tasks/2026-05-31-aether-cli.md`（status ready）。

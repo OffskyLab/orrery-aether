@@ -99,7 +99,7 @@ docker compose -f aether/docker-compose.yml up -d --build
 #   A: echo "AETHER_REDIS_PASSWORD=$(openssl rand -hex 24)" >> aether/.env
 #      aether/scripts/make-certs.sh <A的IP> && docker compose -f aether/docker-compose.yml up -d
 #   B: export AETHER_REDIS_PASSWORD=...   # 同密碼（走 env，不入 profile）
-#      aether register --host <A的IP> --port 6380 --tls --redis-tls-ca ca.crt --id <proj>
+#      aether register --host <A的IP> --port 6380 --tls --tls-ca ca.crt --id <proj>
 #      aether observatory <proj>          # 對遠端 bus 上線
 #   參數優先序 flag>env>profile>default；bus use 把非密碼端點存 ~/.aether/config.json。
 

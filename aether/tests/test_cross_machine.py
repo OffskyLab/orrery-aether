@@ -185,8 +185,8 @@ def test_bus_use_persists_profile(tmp_path, monkeypatch):
     monkeypatch.setattr(ac, "make_redis", lambda **kw: FakeRedis(**kw))
     monkeypatch.delenv("AETHER_REDIS_PASSWORD", raising=False)
 
-    rc = cli.main(["bus", "use", "--redis-host", "10.0.0.9", "--redis-port", "6380",
-                   "--redis-tls", "--redis-tls-ca", "/ca.pem"])
+    rc = cli.main(["bus", "use", "--host", "10.0.0.9", "--port", "6380",
+                   "--tls", "--tls-ca", "/ca.pem"])
     assert rc == 0
     import json
     data = json.loads(prof.read_text())
@@ -209,7 +209,7 @@ def test_bus_use_ping_fail_does_not_persist(tmp_path, monkeypatch):
             raise RuntimeError("unreachable")
 
     monkeypatch.setattr(ac, "make_redis", lambda **kw: Boom())
-    rc = cli.main(["bus", "use", "--redis-host", "10.0.0.9"])
+    rc = cli.main(["bus", "use", "--host", "10.0.0.9"])
     assert rc == 1
     assert not prof.exists()                 # no half-complete profile
 

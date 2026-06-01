@@ -137,7 +137,7 @@ docker compose -f aether/docker-compose.yml up -d  # TLS auto-enables on :6380
 
 # On a CLIENT machine (B): join the bus + register this project's body
 export AETHER_REDIS_PASSWORD=...                   # same secret (env, never the profile)
-aether register --host 172.16.100.55 --port 6380 --tls --redis-tls-ca /path/to/ca.crt --id my_proj
+aether register --host 172.16.100.55 --port 6380 --tls --tls-ca /path/to/ca.crt --id my_proj
 aether observatory my_proj                         # go online against the remote bus
 ```
 

@@ -71,6 +71,23 @@ def _add_redis_opts(p):
     p.add_argument("--redis-tls-ca", default=None, help="CA cert (PEM) for TLS verification")
 
 
+def _add_bus_opts(p):
+    # Endpoint-style flags for `bus use` / `register`: here --host/--port name the
+    # BUS (Redis) endpoint — matches `aether register --host 1.2.3.4 --port 6380`.
+    # Same dests as _add_redis_opts so _cli_dict / resolver pick them up.
+    p.add_argument("--host", dest="redis_host", default=None, help="bus (Redis) host")
+    p.add_argument("--port", dest="redis_port", type=int, default=None, help="bus (Redis) port")
+    p.add_argument("--db", dest="redis_db", type=int, default=None)
+    p.add_argument("--password", dest="redis_password", default=None,
+                   help="prefer AETHER_REDIS_PASSWORD env (avoids shell history)")
+    p.add_argument("--username", dest="redis_username", default=None)
+    p.add_argument("--tls", dest="redis_tls", action="store_const", const=True, default=None,
+                   help="connect over TLS")
+    p.add_argument("--no-tls", dest="redis_tls", action="store_const", const=False,
+                   help="force TLS off (overrides env/profile)")
+    p.add_argument("--tls-ca", dest="redis_tls_ca", default=None, help="CA cert (PEM) for TLS")
+
+
 # --- handlers ---------------------------------------------------------------
 def cmd_mcp_setup(args) -> int:
     project = _project_id(args)
@@ -310,15 +327,15 @@ def build_parser() -> argparse.ArgumentParser:
     # bus use (persist a remote bus endpoint to ~/.aether/config.json)
     bus = sub.add_parser("bus", help="bus endpoint profile").add_subparsers(dest="sub", required=True)
     bu = bus.add_parser("use", help="point this machine at a (remote) bus + persist the endpoint")
-    _add_redis_opts(bu); bu.set_defaults(func=cmd_bus_use)
+    _add_bus_opts(bu); bu.set_defaults(func=cmd_bus_use)
 
-    # register (= bus use + client setup)
+    # register (= bus use + client setup) — uses endpoint-style --host/--port
     reg = sub.add_parser("register", help="join a (remote) bus + register this project's body")
     reg.add_argument("--id"); reg.add_argument("--description")
     reg.add_argument("--capability", action="append", help="repeatable")
     reg.add_argument("--yes", action="store_true", help="non-interactive")
     reg.add_argument("--force", action="store_true", help="overwrite an existing body with the same id")
-    _add_redis_opts(reg); reg.set_defaults(func=cmd_register)
+    _add_bus_opts(reg); reg.set_defaults(func=cmd_register)
 
     # server status
     sv = sub.add_parser("server", help="bus (Redis) status").add_subparsers(dest="sub", required=True)

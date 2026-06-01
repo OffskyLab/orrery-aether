@@ -1,0 +1,15 @@
+# Throwaway override for the cross-machine REAL-MACHINE verification.
+# Exercises the REAL redis service from docker-compose.yml (the sh -c TLS command),
+# but isolated: unique container name + ports + a verify-only password injected via
+# `environment` (so aether/.env is NOT touched and the running aether-redis is
+# untouched). Usage:
+#   AETHER_VERIFY_PW=... docker compose -f aether/docker-compose.yml \
+#       -f aether/docs/cross-machine/verify-override.yml -p aether-verify up -d redis
+services:
+  redis:
+    container_name: aether-redis-verify
+    environment:
+      AETHER_REDIS_PASSWORD: "${AETHER_VERIFY_PW}"   # overrides env_file → auth ON
+    ports: !override
+      - "127.0.0.1:6390:6379"   # plain (loopback)
+      - "127.0.0.1:6391:6380"   # TLS
