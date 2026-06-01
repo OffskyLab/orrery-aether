@@ -40,8 +40,12 @@ from aether.observatory.claude_runner import RealClaudeRunner
 from aether.observatory.main import Observatory
 from aether.observatory.progress import ProgressForwarder
 
-DEFAULT_CONSTELLATION = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     "constellation.yaml")
+from aether.cli_support import sanitize_id
+
+# Mutable user data → stable user-owned location (NOT the package dir, which a
+# reinstall wipes). AETHER_CONSTELLATION overrides.
+DEFAULT_CONSTELLATION = (os.environ.get("AETHER_CONSTELLATION")
+                         or os.path.expanduser("~/.aether/constellation.yaml"))
 
 
 def _telescope_log(project_id, conversation_id, evt):
@@ -78,6 +82,14 @@ def main(argv=None):
                     help="forward full claude text to the dashboard (default: milestones only)")
     args = ap.parse_args(argv)
 
+    # Sanitize the id the SAME way `client setup`/`register` do, so
+    # `aether observatory EventStormingTool` matches the registered `eventstormingtool`
+    # (they store the sanitized form). Without this the two commands disagreed.
+    args.project_id = sanitize_id(args.project_id)
+
+    if not os.path.isfile(args.constellation):
+        sys.exit(f"no constellation at {args.constellation}\n"
+                 f"Register this project first:  aether client setup   (or  aether register …)")
     bodies = load_constellation(args.constellation)
     if args.project_id not in bodies:
         sys.exit(f"'{args.project_id}' is not in {args.constellation}. "

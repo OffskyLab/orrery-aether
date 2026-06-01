@@ -42,8 +42,9 @@ from aether.core.registry import Body, Registry, load_constellation
 from aether.operator_panel.control_service import OperatorService
 from aether.stargazer.viewmodels import build_timeline
 
-DEFAULT_CONSTELLATION = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     "constellation.yaml")
+# Mutable user data → stable user-owned location (NOT the package dir). The arg
+# below still lets AETHER_CONSTELLATION override.
+DEFAULT_CONSTELLATION = os.path.expanduser("~/.aether/constellation.yaml")
 
 
 def _events_tail(redis, count=1000):

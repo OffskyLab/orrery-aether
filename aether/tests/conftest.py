@@ -59,6 +59,14 @@ def pytest_collection_modifyitems(config, items):
 
 
 # ---- Redis -----------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _no_bus_profile(monkeypatch):
+    """Hermetic tests: never read the developer's real ~/.aether/config.json
+    (a saved bus profile would otherwise redirect resolve_redis_kwargs at a remote
+    host). Force the auto-loaded profile to empty everywhere."""
+    monkeypatch.setattr("aether.core.conn.load_bus_profile", lambda *a, **k: {})
+
+
 @pytest.fixture(scope="session")
 def _redis_available():
     r = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_TEST_DB,

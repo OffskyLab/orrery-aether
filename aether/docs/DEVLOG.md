@@ -2,6 +2,20 @@
 
 每個邏輯變更一條：what / why / 決策依據。對應 git commit。
 
+## 2026-06-01 — 跨機實機部署回饋的 3 個修正（id 消毒 / constellation 位置 / CA 絕對路徑）
+
+真機把 bus 部署到另一台 + 從 laptop register 時暴露的 UX 坑:
+- **`observatory` 也對 id 做 `sanitize_id`**:`register` 會消毒 id(`EventStormingTool`→`eventstormingtool`)但
+  `observatory` 原樣查找 → 兩者不一致、`aether observatory EventStormingTool` 找不到。修成一致。
+- **預設 constellation 改 `~/.aether/constellation.yaml`**(cli/run_observatory/mcp_server 一致,`AETHER_CONSTELLATION`
+  override):pip 裝好的 CLI 原本讀寫 **site-packages** 那份 → 重裝會被洗、且與 clone 兩份混淆、還夾帶打包快照
+  body。改成使用者層穩定路徑;`client setup` 寫入前 `os.makedirs(~/.aether)`;`observatory` 找不到檔給明確提示。
+- **`bus use` 把 `--tls-ca` 存成絕對路徑**(`os.path.abspath`):原本存相對 `./ca.crt`,之後從別的 cwd 跑
+  observatory/Stargazer 找不到 CA。
+- **測試隔離**:conftest 新增 autouse fixture 把 `load_bus_profile` 強制回 `{}` → 測試不讀開發者真實
+  `~/.aether/config.json`(否則 profile 的遠端 host 會把測試導去遠端 bus)。
+- **驗證**:105 測試綠(+`test_observatory_sanitizes_project_id`;`test_bus_use_persists_profile` 改驗相對→絕對)。
+
 ## 2026-06-01 — pipx 安裝（packaging，解除 C1 延後）
 
 使用者要「未來可 `pipx install`」。新增標準 Python packaging：

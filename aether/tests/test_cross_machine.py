@@ -186,12 +186,13 @@ def test_bus_use_persists_profile(tmp_path, monkeypatch):
     monkeypatch.delenv("AETHER_REDIS_PASSWORD", raising=False)
 
     rc = cli.main(["bus", "use", "--host", "10.0.0.9", "--port", "6380",
-                   "--tls", "--tls-ca", "/ca.pem"])
+                   "--tls", "--tls-ca", "ca.pem"])     # RELATIVE on purpose
     assert rc == 0
-    import json
+    import json, os
     data = json.loads(prof.read_text())
     assert data["host"] == "10.0.0.9" and data["port"] == 6380 and data["ssl"] is True
-    assert data["ssl_ca_certs"] == "/ca.pem"
+    # relative --tls-ca must be persisted as ABSOLUTE (read later from other cwds)
+    assert os.path.isabs(data["ssl_ca_certs"]) and data["ssl_ca_certs"].endswith("ca.pem")
     assert "password" not in data            # secret never persisted
     assert oct(prof.stat().st_mode)[-3:] == "600"
 
@@ -227,3 +228,15 @@ def test_observatory_null_working_dir_hard_errors(tmp_path):
     )
     with pytest.raises(SystemExit):
         ro.main(["remote_body", "--constellation", str(const)])
+
+
+def test_observatory_sanitizes_project_id(tmp_path):
+    # `aether observatory EventStormingTool` must sanitize the id the same way
+    # register/client setup do (→ lowercased), so the lookup/error uses the
+    # sanitized form (matches the stored body id).
+    import aether.run_observatory as ro
+    const = tmp_path / "c.yaml"
+    const.write_text("bodies:\n  realbody:\n    inbox: x\n    working_dir: /tmp\n")
+    with pytest.raises(SystemExit) as ei:
+        ro.main(["NoSuchBody", "--constellation", str(const)])
+    assert "nosuchbody" in str(ei.value)        # raw 'NoSuchBody' was sanitized

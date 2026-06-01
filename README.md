@@ -235,7 +235,7 @@ aether register --host <ip> --port <p> ...  # join a (remote) bus + register thi
 ```
 
 - `aether mcp setup`: detects the current project → uses a stable identity `<project>-mcp` (never collides with the Observatory id) → writes the server into `.mcp.json` with an **absolute python path** (idempotent merge, preserves existing servers). Flags: `--scope project|local|user`, `--method mcp-json|claude-cli`.
-- `aether client setup`: **infers** description/capabilities from `CLAUDE.md`/manifest for you to confirm (`--yes`/flags for non-interactive) → registers **this body only** on the bus (additive, fail-closed) → pings Redis.
+- `aether client setup`: **infers** description/capabilities from `CLAUDE.md`/manifest for you to confirm (`--yes`/flags for non-interactive) → registers **this body only** on the bus (additive, fail-closed) → pings Redis. The body is written to `~/.aether/constellation.yaml` (a stable, user-owned star chart that survives reinstalls; override with `AETHER_CONSTELLATION`). The repo's `aether/constellation.yaml` is just an example/seed. Ids are sanitized (lowercased, non-`[a-z0-9_]`→`_`) consistently across `register`/`observatory`.
 
 ### Most seamless: the Aether MCP server
 

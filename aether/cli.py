@@ -27,9 +27,13 @@ if _REPO_ROOT not in sys.path:
 from aether.cli_support import (append_constellation_body, build_mcp_server_entry,  # noqa: E402
                                 infer_metadata, merge_mcp_config, sanitize_id)
 
-MCP_SERVER_SCRIPT = os.path.join(_PKG_DIR, "mcp_server.py")
-CONSTELLATION_PATH = os.path.join(_PKG_DIR, "constellation.yaml")
-COMPOSE_FILE = os.path.join(_PKG_DIR, "docker-compose.yml")
+MCP_SERVER_SCRIPT = os.path.join(_PKG_DIR, "mcp_server.py")   # package resource (script to run)
+COMPOSE_FILE = os.path.join(_PKG_DIR, "docker-compose.yml")   # package resource (bundled compose)
+# The constellation is MUTABLE user data — keep it in a stable user-owned location
+# (NOT inside the package, which a pip reinstall would wipe). AETHER_CONSTELLATION
+# overrides. The bundled aether/constellation.yaml is only an example/seed.
+CONSTELLATION_PATH = (os.environ.get("AETHER_CONSTELLATION")
+                      or os.path.expanduser("~/.aether/constellation.yaml"))
 
 
 # --- shared helpers ---------------------------------------------------------
@@ -170,8 +174,9 @@ def cmd_client_setup(args) -> int:
     text = open(CONSTELLATION_PATH, encoding="utf-8").read() if os.path.isfile(CONSTELLATION_PATH) else "bodies:\n"
     new_text, action = append_constellation_body(text, project, fields)
     if action == "appended":
+        os.makedirs(os.path.dirname(CONSTELLATION_PATH), exist_ok=True)
         open(CONSTELLATION_PATH, "w", encoding="utf-8").write(new_text)
-        print(f"✓ registered body '{project}' (working_dir={cwd}) in constellation.yaml")
+        print(f"✓ registered body '{project}' (working_dir={cwd}) in {CONSTELLATION_PATH}")
     else:
         print(f"· body '{project}' already in constellation.yaml (unchanged)")
 
@@ -256,7 +261,9 @@ def cmd_bus_use(args) -> int:
     if kw.get("ssl"):
         profile["ssl"] = True
     if kw.get("ssl_ca_certs"):
-        profile["ssl_ca_certs"] = kw["ssl_ca_certs"]
+        # Store ABSOLUTE — the profile is read later from arbitrary cwds, so a
+        # relative --tls-ca (e.g. ./ca.crt) would not resolve for observatory/Stargazer.
+        profile["ssl_ca_certs"] = os.path.abspath(kw["ssl_ca_certs"])
     if kw.get("username"):
         profile["username"] = kw["username"]
     os.makedirs(os.path.dirname(DEFAULT_PROFILE_PATH), exist_ok=True)
