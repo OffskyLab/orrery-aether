@@ -49,9 +49,32 @@ def inbox_stream(project_id: str) -> str:
     return f"aether:inbox:{project_id}"
 
 
-def make_redis(host: str = "localhost", port: int = 6379, db: int = 0) -> "redis_lib.Redis":
-    """Build a Redis client decoded to ``str`` so callers never juggle bytes."""
-    return redis_lib.Redis(host=host, port=port, db=db, decode_responses=True)
+def make_redis(host: str = "localhost", port: int = 6379, db: int = 0, *,
+               password: Optional[str] = None, username: Optional[str] = None,
+               ssl: bool = False, ssl_ca_certs: Optional[str] = None,
+               ssl_certfile: Optional[str] = None,
+               ssl_keyfile: Optional[str] = None) -> "redis_lib.Redis":
+    """Build a Redis client decoded to ``str`` so callers never juggle bytes.
+
+    The new keyword-only auth/TLS params default to None/False, so a bare
+    ``make_redis()`` is byte-identical to before (cross-machine spec invariant):
+    only host/port/db/decode_responses reach ``redis.Redis``. A value is passed
+    through ONLY when set, so we never change AUTH/TLS behaviour by accident.
+    """
+    kwargs: dict = {"host": host, "port": port, "db": db, "decode_responses": True}
+    if password is not None:
+        kwargs["password"] = password
+    if username is not None:
+        kwargs["username"] = username
+    if ssl:
+        kwargs["ssl"] = True
+        if ssl_ca_certs is not None:
+            kwargs["ssl_ca_certs"] = ssl_ca_certs
+        if ssl_certfile is not None:
+            kwargs["ssl_certfile"] = ssl_certfile
+        if ssl_keyfile is not None:
+            kwargs["ssl_keyfile"] = ssl_keyfile
+    return redis_lib.Redis(**kwargs)
 
 
 def _now_iso() -> str:

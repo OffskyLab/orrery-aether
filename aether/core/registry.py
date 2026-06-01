@@ -14,8 +14,25 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 import yaml
+from redis.exceptions import WatchError
 
 REGISTRY_KEY = "aether:registry"
+
+
+class DuplicateBodyError(Exception):
+    """A body id is already registered with DIFFERENT content (e.g. another host
+    claimed the same project_id). Fail-closed: two bodies sharing an id would also
+    share ``aether:inbox:<id>`` / ``grp-<id>`` → split-brain message theft."""
+
+    def __init__(self, project_id: str, existing: str, incoming: str) -> None:
+        self.project_id = project_id
+        self.existing = existing
+        self.incoming = incoming
+        super().__init__(
+            f"body '{project_id}' is already registered with different content. "
+            f"Use --force to overwrite, or pick a different id "
+            f"(two hosts must not register the same body id)."
+        )
 
 
 @dataclass
@@ -63,14 +80,51 @@ class Registry:
     def __init__(self, redis: "object") -> None:
         self.redis = redis
 
-    def sync(self, bodies: Dict[str, Body]) -> None:
-        self.redis.delete(REGISTRY_KEY)
-        if bodies:
-            self.redis.hset(REGISTRY_KEY, mapping={pid: b.to_json() for pid, b in bodies.items()})
+    def register_body(self, body: Body, *, force: bool = False, _max_retries: int = 50) -> str:
+        """Atomically register one body (compare-and-set via WATCH/MULTI).
 
-    def load_and_sync(self, path: str) -> Dict[str, Body]:
+        Returns "added" | "unchanged" | "forced". Raises ``DuplicateBodyError``
+        when the id exists with different content and ``force`` is False. The CAS
+        loop closes the race where two hosts both read "absent" and last-write-wins.
+        """
+        new_json = body.to_json()
+        for _ in range(_max_retries):
+            with self.redis.pipeline() as pipe:
+                try:
+                    pipe.watch(REGISTRY_KEY)
+                    existing = pipe.hget(REGISTRY_KEY, body.project_id)  # immediate (watch mode)
+                    if existing == new_json:
+                        pipe.unwatch()
+                        return "unchanged"
+                    if existing is not None and not force:
+                        pipe.unwatch()
+                        raise DuplicateBodyError(body.project_id, existing, new_json)
+                    pipe.multi()
+                    pipe.hset(REGISTRY_KEY, body.project_id, new_json)
+                    pipe.execute()  # raises WatchError if REGISTRY_KEY changed since watch
+                    return "added" if existing is None else "forced"
+                except WatchError:
+                    continue  # someone wrote between our read and exec → retry
+        raise RuntimeError(f"register_body: too much contention on {REGISTRY_KEY}")
+
+    def sync(self, bodies: Dict[str, Body], *, prune: bool = False, force: bool = False) -> None:
+        """Publish bodies into the registry.
+
+        Default (``prune=False``) is ADDITIVE: each body is registered via the
+        atomic CAS, so syncing host B's bodies never deletes host A/C's (the
+        old delete-all-then-add wiped the whole table). ``prune=True`` restores
+        the destructive full-replace for single-owner seed/admin use (demos)."""
+        if prune:
+            self.redis.delete(REGISTRY_KEY)
+            if bodies:
+                self.redis.hset(REGISTRY_KEY, mapping={pid: b.to_json() for pid, b in bodies.items()})
+            return
+        for b in bodies.values():
+            self.register_body(b, force=force)
+
+    def load_and_sync(self, path: str, *, prune: bool = False, force: bool = False) -> Dict[str, Body]:
         bodies = load_constellation(path)
-        self.sync(bodies)
+        self.sync(bodies, prune=prune, force=force)
         return bodies
 
     def all(self) -> Dict[str, Body]:

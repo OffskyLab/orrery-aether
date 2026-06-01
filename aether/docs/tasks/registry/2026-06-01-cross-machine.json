@@ -1,0 +1,31 @@
+{
+  "id": "2026-06-01-cross-machine",
+  "file": "aether/docs/cross-machine/02-spec.md",
+  "title": "Aether 跨機部署（Redis auth+TLS / register / 遠端訂閱）",
+  "status": "ready",
+  "created": "2026-06-01",
+  "depends_on": [],
+  "supersedes": [],
+  "discussion": "aether/docs/cross-machine/01-discussion.md",
+  "plan": "aether/docs/cross-machine/00-plan.md",
+  "preconditions": [
+    "file:aether/core/aether_client.py",
+    "file:aether/core/registry.py",
+    "file:aether/run_observatory.py",
+    "file:aether/cli.py",
+    "file:aether/stargazer/server.py",
+    "file:aether/operator_panel/server.py",
+    "file:aether/docker-compose.yml"
+  ],
+  "verification": [
+    "python3 -m pytest aether/tests -q",
+    "python3 -c \"import inspect,aether.core.aether_client as a; s=inspect.signature(a.make_redis); assert 'password' in s.parameters and 'ssl' in s.parameters\"",
+    "test \"$(grep -rn -E 'redis_lib\\.Redis\\(|redis\\.Redis\\(' --include='*.py' aether | grep -v __pycache__ | grep -vE 'aether/core/aether_client.py|tests/conftest.py' | wc -l | tr -d ' ')\" = 0"
+  ],
+  "tags": ["feature", "infra", "security", "cross-machine"],
+  "status_history": [
+    {"status": "draft", "at": "2026-06-01"},
+    {"status": "audited", "at": "2026-06-01", "note": "audit-spec: 內部 4b/5b PASS（修 Rule1 line-anchor）; 外部 Codex R1 = 5高+6中+2低 全修; Codex R2 = 全 RESOLVED + N1高/N2中/N3低 全修"},
+    {"status": "ready", "at": "2026-06-01", "note": "兩輪外部審查所有 high 已關閉"}
+  ]
+}
